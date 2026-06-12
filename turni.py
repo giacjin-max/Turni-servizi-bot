@@ -54,18 +54,18 @@ msg = f"📅 Turni Domenica {riga['Data'].strftime('%d/%m/%Y')}\n\n"
 
 emoji = {
     "Parola": "📖",
-    "Adorazione": "🙏",
+    "Adorazione": "🙌🏻",
     "Coro": "🎤",
-    "BimbiGiovani": "👶",
+    "BimbiGiovani": "👦🏻",
     "Piano": "🎹",
     "Bass": "🎸",
     "Chitarra": "🎸",
-    "Mix": "🎚",
+    "Mix": "🎧",
     "PC": "💻",
     "Porta": "🚪",
     "Pulizia": "🧹",
-    "Pulizia sala bimbi": "🧸",
-    "Traduzione": "🌍",
+    "Pulizia sala bimbi": "🧹",
+    "Traduzione": "🗣️",
     "Ronda": "🛡",
 }
 

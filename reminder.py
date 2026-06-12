@@ -1,102 +1,121 @@
 import os
 import json
+import pandas as pd
 import requests
-from datetime import datetime
+from collections import defaultdict
 
 # =====================
 # CONFIG
 # =====================
 BOT_TOKEN = os.environ["BOT_TOKEN"]
+CHAT_ID = os.environ["CHAT_ID"]
 
-get_url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 DB_FILE = "responses.json"
-OFFSET_FILE = "offset.json"
 
 # =====================
-# LOAD DATABASE RISPOSTE
+# LOAD RISPOSTE
 # =====================
 if os.path.exists(DB_FILE):
-    db = json.load(open(DB_FILE))
+    responses = json.load(open(DB_FILE))
 else:
-    db = {}
+    responses = {}
 
 # =====================
-# LOAD OFFSET (EVITA DUPLICATI UPDATE)
+# EXCEL
 # =====================
-if os.path.exists(OFFSET_FILE):
-    last_offset = json.load(open(OFFSET_FILE))["offset"]
-else:
-    last_offset = 0
+df = pd.read_excel("turni.xlsx")
+df = df[df["Data"].notna()].copy()
+df["Data"] = pd.to_datetime(df["Data"])
 
 # =====================
-# FETCH UPDATES
+# PROSSIMO TURNO
 # =====================
-resp = requests.get(get_url).json()
-updates = resp.get("result", [])
+riga = df.sort_values("Data").iloc[0]
+date = riga["Data"].strftime("%Y-%m-%d")
 
-max_offset = last_offset
+done = responses.get(date, {})
 
 # =====================
-# LOOP UPDATES
+# SERVIZI
 # =====================
-for u in updates:
+servizi = [
+    "Parola","Adorazione","Coro","BimbiGiovani","Piano","Bass",
+    "Chitarra","Mix","PC","Porta","Pulizia","Pulizia sala bimbi",
+    "Traduzione","Ronda"
+]
 
-    update_id = u["update_id"]
+# =====================
+# MAPPA PERSONA -> SERVIZI
+# =====================
+people_to_services = defaultdict(set)
 
-    if update_id <= last_offset:
+for s in servizi:
+
+    if s not in riga:
         continue
 
-    max_offset = max(max_offset, update_id)
+    valore = riga[s]
 
-    if "callback_query" not in u:
+    # ❌ salta vuoti
+    if pd.isna(valore):
         continue
 
-    cq = u["callback_query"]
+    valore = str(valore).strip()
 
-    user = cq["from"]["first_name"]
-    user_id = cq["from"]["id"]
-
-    data = cq["data"]  # es: ok|2026-01-20
-
-    # =====================
-    # PARSING CALLBACK
-    # =====================
-    try:
-        action, date = data.split("|")
-    except:
+    # ❌ salta stringhe vuote
+    if valore == "":
         continue
 
-    if action == "ok":
-        status = "ok"
-    else:
-        status = "no"
+    nomi = valore.replace(";", ",").split(",")
 
-    # =====================
-    # INIT DATE IN DB
-    # =====================
-    if date not in db:
-        db[date] = {}
+    for n in nomi:
+        n = n.strip()
 
-    # =====================
-    # SALVA RISPOSTA
-    # =====================
-    db[date][user] = {
-        "status": status,
-        "time": datetime.now().isoformat(),
-        "user_id": user_id
-    }
+        # ❌ salta vuoti
+        if not n:
+            continue
+
+        people_to_services[n].add(s)
 
 # =====================
-# SAVE DB RISPOSTE
+# TROVA MANCANTI
 # =====================
-with open(DB_FILE, "w") as f:
-    json.dump(db, f, indent=2)
+missing = []
+
+for person in people_to_services.keys():
+    if person not in done:
+        missing.append(person)
 
 # =====================
-# SAVE OFFSET
+# STOP SE TUTTI HANNO RISPOSTO
 # =====================
-with open(OFFSET_FILE, "w") as f:
-    json.dump({"offset": max_offset}, f, indent=2)
+if not missing:
+    print("Tutti hanno risposto 👍")
+    exit()
 
-print("Receiver aggiornato")
+# =====================
+# MESSAGGIO
+# =====================
+msg = "⏳ Reminder: non hanno ancora risposto al turno\n\n"
+
+for person in missing:
+
+    services = list(people_to_services[person])
+
+    # sicurezza extra
+    if not services:
+        continue
+
+    msg += f"• {person} ({', '.join(services)})\n"
+
+# =====================
+# INVIO TELEGRAM
+# =====================
+requests.post(url, data={
+    "chat_id": CHAT_ID,
+    "text": msg
+})
+
+print("Reminder inviato")

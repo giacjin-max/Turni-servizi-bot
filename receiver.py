@@ -3,18 +3,10 @@ import json
 import requests
 from datetime import datetime
 
-# =====================
-# CONFIG
-# =====================
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-GET_UPDATES_URL = (
-    f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-)
-
-ANSWER_CALLBACK_URL = (
-    f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery"
-)
+GET_UPDATES_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+ANSWER_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery"
 
 DB_FILE = "responses.json"
 OFFSET_FILE = "offset.json"
@@ -34,119 +26,84 @@ else:
 if os.path.exists(OFFSET_FILE):
     with open(OFFSET_FILE, "r") as f:
         offset_data = json.load(f)
-
-    last_update_id = offset_data.get("offset", 0)
-
+        offset = offset_data.get("offset", 0)
 else:
-    last_update_id = 0
+    offset = 0
 
 # =====================
 # GET UPDATES
 # =====================
-resp = requests.get(GET_UPDATES_URL)
-
-data = resp.json()
-
+data = requests.get(GET_UPDATES_URL).json()
 updates = data.get("result", [])
 
-max_update_id = last_update_id
+max_offset = offset
 
-# =====================
-# ELABORA UPDATE
-# =====================
 for update in updates:
 
     update_id = update["update_id"]
 
-    if update_id <= last_update_id:
+    if update_id <= offset:
         continue
 
-    max_update_id = max(max_update_id, update_id)
+    max_offset = max(max_offset, update_id)
 
     if "callback_query" not in update:
         continue
 
-    callback = update["callback_query"]
+    cb = update["callback_query"]
 
-    callback_id = callback["id"]
-
-    user = callback["from"]
-
-    user_id = str(user["id"])
-
-    first_name = user.get("first_name", "")
+    cb_id = cb["id"]
+    user = cb["from"]
 
     username = user.get("username")
+    user_id = str(user["id"])
 
-    callback_data = callback["data"]
+    callback_data = cb["data"]
 
+    # =====================
+    # PARSE CALLBACK
+    # =====================
     try:
-        action, turno_date = callback_data.split("|")
-    except ValueError:
+        action, date = callback_data.split("|")
+    except:
         continue
 
-    if turno_date not in responses:
-        responses[turno_date] = {}
+    user_key = f"@{username}" if username else user_id
 
-    # =====================
-    # IDENTIFICAZIONE UTENTE
-    # =====================
-    if username:
-        user_key = f"@{username}"
-    else:
-        user_key = f"{first_name}_{user_id}"
+    if date not in responses:
+        responses[date] = {}
 
     # =====================
     # SALVA RISPOSTA
     # =====================
-    responses[turno_date][user_key] = {
+    responses[date][user_key] = {
         "status": action,
-        "name": first_name,
-        "user_id": user_id,
         "updated_at": datetime.now().isoformat()
     }
 
     # =====================
-    # FEEDBACK TELEGRAM
+    # FEEDBACK BOT
     # =====================
-    testo = (
-        "✅ Presenza confermata"
-        if action == "ok"
-        else "❌ Assenza registrata"
-    )
+    text = "✅ Salvato" if action == "ok" else "❌ Salvato"
 
-    requests.post(
-        ANSWER_CALLBACK_URL,
-        data={
-            "callback_query_id": callback_id,
-            "text": testo,
-            "show_alert": False
-        }
-    )
+    requests.post(ANSWER_URL, data={
+        "callback_query_id": cb_id,
+        "text": text,
+        "show_alert": False
+    })
 
-    print(
-        f"{user_key} -> {action} ({turno_date})"
-    )
+    print(user_key, action, date)
 
 # =====================
 # SAVE RISPOSTE
 # =====================
 with open(DB_FILE, "w") as f:
-    json.dump(
-        responses,
-        f,
-        indent=2,
-        ensure_ascii=False
-    )
+    json.dump(responses, f, indent=2)
 
 # =====================
 # SAVE OFFSET
 # =====================
 with open(OFFSET_FILE, "w") as f:
-    json.dump(
-        {"offset": max_update_id},
-        f,
-        indent=2
-    )
+    json.dump({"offset": max_offset}, f, indent=2)
 
-print("Receiver completato")
+print("Receiver OK")

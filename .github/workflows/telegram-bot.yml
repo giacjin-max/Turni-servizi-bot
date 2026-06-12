@@ -3,8 +3,8 @@ name: Turni Telegram Bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 * * * *"   # sender + reminder ogni ora
-    - cron: "*/5 * * * *" # receiver ogni 5 minuti
+    - cron: "0 * * * *"   # ogni ora (sender + reminder)
+    - cron: "*/5 * * * *" # ogni 5 minuti (receiver)
 
 jobs:
   run:
@@ -14,13 +14,26 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      # =====================
+      # CLONE REPO
+      # =====================
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      # =====================
+      # PYTHON
+      # =====================
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: pip install pandas openpyxl requests
+
+      # =====================
+      # RUN BOT
+      # =====================
 
       - name: Run sender
         run: python sender.py
@@ -39,3 +52,19 @@ jobs:
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+
+      # =====================
+      # SALVATAGGIO DATI
+      # =====================
+
+      - name: Commit updated JSON files
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+
+          git add responses.json offset.json reminder_log.json
+
+          git diff --staged --quiet || git commit -m "Update bot data"
+
+      - name: Push changes
+        run: git push

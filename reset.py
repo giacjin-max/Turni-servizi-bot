@@ -1,22 +1,14 @@
 import json
-import os
+import datetime
 
-# =====================
-# RESET RISPOSTE
-# =====================
-with open("responses.json", "w") as f:
-    json.dump({}, f)
+now = datetime.datetime.now()
 
-# =====================
-# RESET REMINDER
-# =====================
-with open("reminder_log.json", "w") as f:
-    json.dump({}, f)
+if now.weekday() == 0 and now.hour < 1:
 
-# =====================
-# RESET OFFSET TELEGRAM
-# =====================
-with open("offset.json", "w") as f:
-    json.dump({"offset": 0}, f)
+    json.dump({}, open("responses.json","w"))
+    json.dump({}, open("reminder_log.json","w"))
+    json.dump({"offset":0}, open("offset.json","w"))
 
-print("Reset settimana completato")
+    print("Reset settimanale eseguito")
+else:
+    print("No reset")

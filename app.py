@@ -8,26 +8,36 @@ app = Flask(__name__)
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 DB_FILE = "responses.json"
+EXPECTED_FILE = "expected_users.json"
 
 
+# =====================
+# LOAD/SAVE DB
+# =====================
 def load_db():
     try:
-        with open(DB_FILE, "r", encoding="utf-8") as f:
+        with open(DB_FILE, "r") as f:
             return json.load(f)
     except:
         return {}
 
-
-def save_db(data):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
-
-@app.route("/", methods=["GET"])
-def home():
-    return "Webhook attivo", 200
+def save_db(db):
+    with open(DB_FILE, "w") as f:
+        json.dump(db, f, indent=2)
 
 
+def load_expected(date):
+    try:
+        with open(EXPECTED_FILE, "r") as f:
+            data = json.load(f)
+        return data.get(date, [])
+    except:
+        return []
+
+
+# =====================
+# WEBHOOK
+# =====================
 @app.route("/", methods=["POST"])
 def webhook():
 
@@ -35,24 +45,25 @@ def webhook():
 
     print(json.dumps(data, ensure_ascii=False), flush=True)
 
-    if not data:
-        return "ok", 200
-
-    if "callback_query" not in data:
+    if not data or "callback_query" not in data:
         return "ok", 200
 
     cb = data["callback_query"]
 
     cb_id = cb["id"]
+    chat_id = cb["message"]["chat"]["id"]
+    msg_id = cb["message"]["message_id"]
 
     username = (
         cb["from"].get("username")
-        or cb["from"].get("first_name")
         or str(cb["from"]["id"])
     )
 
     action, date = cb["data"].split("|")
 
+    # =====================
+    # DB
+    # =====================
     db = load_db()
 
     if date not in db:
@@ -60,7 +71,6 @@ def webhook():
 
     # BLOCCA DOPPIO CLICK
     if username in db[date]:
-
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
             data={
@@ -68,82 +78,82 @@ def webhook():
                 "text": "Hai già risposto 👍"
             }
         )
-
         return "ok", 200
 
-    # SALVA RISPOSTA
+    # SALVA
     db[date][username] = action
     save_db(db)
 
-    # POPUP TELEGRAM
-    requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-        data={
-            "callback_query_id": cb_id,
-            "text": f"Registrato: {action.upper()} ✅"
-        }
-    )
+    # =====================
+    # EXPECTED USERS
+    # =====================
+    expected = load_expected(date)
+    total_expected = len(set(expected))
+    done = len(db[date])
 
-    # COSTRUISCE ELENCHI
+    # =====================
+    # STATUS LIST
+    # =====================
     ok_users = []
     no_users = []
 
     for user, status in db[date].items():
-
         if status == "ok":
-            ok_users.append(f"@{user}")
-
-        elif status == "no":
-            no_users.append(f"@{user}")
+            ok_users.append("@" + user)
+        else:
+            no_users.append("@" + user)
 
     status_text = "\n\n📋 RISPOSTE\n\n"
 
-    status_text += "✅ Confermati:\n"
+    status_text += "✅ OK:\n" + ("\n".join(ok_users) if ok_users else "-")
+    status_text += "\n\n❌ NON POSSO:\n" + ("\n".join(no_users) if no_users else "-")
 
-    if ok_users:
-        status_text += "\n".join(ok_users)
-    else:
-        status_text += "-"
+    remaining = max(total_expected - done, 0)
 
-    status_text += "\n\n❌ Non disponibili:\n"
+    status_text += f"\n\n⏳ Mancano {remaining} risposte"
 
-    if no_users:
-        status_text += "\n".join(no_users)
-    else:
-        status_text += "-"
+    # =====================
+    # CHIUSURA BOTTONI
+    # =====================
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "🔒 Risposte chiuse" if remaining == 0 else "✅ OK", "callback_data": f"ok|{date}"},
+                {"text": "🔒 Risposte chiuse" if remaining == 0 else "❌ NON POSSO", "callback_data": f"no|{date}"}
+            ]
+        ]
+    }
 
-    original_text = cb["message"]["text"]
+    if remaining == 0:
+        keyboard = {"inline_keyboard": []}
 
-    # EVITA DI AGGIUNGERE PIÙ VOLTE LA SEZIONE RISPOSTE
-    if "\n\n📋 RISPOSTE" in original_text:
-        original_text = original_text.split("\n\n📋 RISPOSTE")[0]
+    # =====================
+    # EDIT MESSAGGIO
+    # =====================
+    original = cb["message"]["text"]
+
+    if "\n\n📋 RISPOSTE" in original:
+        original = original.split("\n\n📋 RISPOSTE")[0]
 
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
         json={
-            "chat_id": cb["message"]["chat"]["id"],
-            "message_id": cb["message"]["message_id"],
-            "text": original_text + status_text,
-            "reply_markup": {
-                "inline_keyboard": [
-                    [
-                        {
-                            "text": "✅ OK",
-                            "callback_data": f"ok|{date}"
-                        },
-                        {
-                            "text": "❌ NON POSSO",
-                            "callback_data": f"no|{date}"
-                        }
-                    ]
-                ]
-            }
+            "chat_id": chat_id,
+            "message_id": msg_id,
+            "text": original + status_text,
+            "reply_markup": keyboard
         }
     )
 
-    print(
-        f"SALVATO -> {username} {action} {date}",
-        flush=True
+    # =====================
+    # POPUP
+    # =====================
+    requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+        data={
+            "callback_query_id": cb_id,
+            "text": "Salvato ✔"
+        }
     )
 
     return "ok", 200

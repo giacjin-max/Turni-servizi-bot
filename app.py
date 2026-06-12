@@ -40,17 +40,15 @@ def answer(cb_id, text="Salvato ✔"):
 
 # =========================
 # WEBHOOK
-# =========================
-@app.route("/", methods=["POST"])
+# =========================@app.route("/", methods=["POST"])
 def webhook():
 
-    data = request.get_json()
-
-    # 🔥 DEBUG (QUI)
-    print("INCOMING UPDATE:", data)
+    data = request.get_json(silent=True)
 
     if not data:
-        return "ok"
+        data = request.form.to_dict()
+
+    print("INCOMING:", data)
 
     if "callback_query" not in data:
         return "ok"
@@ -62,28 +60,9 @@ def webhook():
 
     raw = cb.get("data", "")
 
-    print("CLICK DATA:", raw)  # 🔥 DEBUG
-
-    if "|" not in raw:
-        return "ok"
-
-    action, date = raw.split("|", 1)
-
-    db = load_db()
-
-    if date not in db:
-        db[date] = {}
-
-    db[date][user] = action
-
-    save_db(db)
-
-    answer(cb_id, f"{action} salvato ✔")
-
-    print(f"SAVED: {user} -> {action} ({date})")
+    print("CLICK:", raw)
 
     return "ok"
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

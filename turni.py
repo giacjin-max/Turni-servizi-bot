@@ -93,7 +93,7 @@ for servizio in servizi:
 
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-requests.post(
+response = requests.post(
     url,
     data={
         "chat_id": CHAT_ID,
@@ -101,4 +101,6 @@ requests.post(
     },
 )
 
-print(msg)
+print("CHAT_ID =", CHAT_ID)
+print(response.status_code)
+print(response.text)

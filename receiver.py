@@ -8,92 +8,145 @@ from datetime import datetime
 # =====================
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-get_url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+GET_UPDATES_URL = (
+    f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+)
+
+ANSWER_CALLBACK_URL = (
+    f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery"
+)
 
 DB_FILE = "responses.json"
 OFFSET_FILE = "offset.json"
 
 # =====================
-# LOAD DB RISPOSTE
+# LOAD RISPOSTE
 # =====================
 if os.path.exists(DB_FILE):
-    db = json.load(open(DB_FILE))
+    with open(DB_FILE, "r") as f:
+        responses = json.load(f)
 else:
-    db = {}
+    responses = {}
 
 # =====================
-# LOAD OFFSET (EVITA DUPLICATI)
+# LOAD OFFSET
 # =====================
 if os.path.exists(OFFSET_FILE):
-    last_offset = json.load(open(OFFSET_FILE))["offset"]
+    with open(OFFSET_FILE, "r") as f:
+        offset_data = json.load(f)
+
+    last_update_id = offset_data.get("offset", 0)
+
 else:
-    last_offset = 0
+    last_update_id = 0
 
 # =====================
-# FETCH UPDATES
+# GET UPDATES
 # =====================
-resp = requests.get(get_url).json()
-updates = resp.get("result", [])
+resp = requests.get(GET_UPDATES_URL)
 
-max_offset = last_offset
+data = resp.json()
+
+updates = data.get("result", [])
+
+max_update_id = last_update_id
 
 # =====================
-# LOOP UPDATES
+# ELABORA UPDATE
 # =====================
-for u in updates:
+for update in updates:
 
-    update_id = u["update_id"]
+    update_id = update["update_id"]
 
-    if update_id <= last_offset:
+    if update_id <= last_update_id:
         continue
 
-    max_offset = max(max_offset, update_id)
+    max_update_id = max(max_update_id, update_id)
 
-    if "callback_query" not in u:
+    if "callback_query" not in update:
         continue
 
-    cq = u["callback_query"]
+    callback = update["callback_query"]
 
-    user_id = cq["from"]["id"]
-    user_name = cq["from"]["first_name"]
+    callback_id = callback["id"]
 
-    data = cq["data"]  # ok|2026-06-12
+    user = callback["from"]
 
-    # =====================
-    # PARSING CALLBACK
-    # =====================
+    user_id = str(user["id"])
+
+    first_name = user.get("first_name", "")
+
+    username = user.get("username")
+
+    callback_data = callback["data"]
+
     try:
-        action, date = data.split("|")
-    except:
+        action, turno_date = callback_data.split("|")
+    except ValueError:
         continue
 
-    status = "ok" if action == "ok" else "no"
+    if turno_date not in responses:
+        responses[turno_date] = {}
 
     # =====================
-    # INIT DATE
+    # IDENTIFICAZIONE UTENTE
     # =====================
-    if date not in db:
-        db[date] = {}
+    if username:
+        user_key = f"@{username}"
+    else:
+        user_key = f"{first_name}_{user_id}"
 
     # =====================
     # SALVA RISPOSTA
     # =====================
-    db[date][user_name] = {
-        "status": status,
-        "time": datetime.now().isoformat(),
-        "user_id": user_id
+    responses[turno_date][user_key] = {
+        "status": action,
+        "name": first_name,
+        "user_id": user_id,
+        "updated_at": datetime.now().isoformat()
     }
 
+    # =====================
+    # FEEDBACK TELEGRAM
+    # =====================
+    testo = (
+        "✅ Presenza confermata"
+        if action == "ok"
+        else "❌ Assenza registrata"
+    )
+
+    requests.post(
+        ANSWER_CALLBACK_URL,
+        data={
+            "callback_query_id": callback_id,
+            "text": testo,
+            "show_alert": False
+        }
+    )
+
+    print(
+        f"{user_key} -> {action} ({turno_date})"
+    )
+
 # =====================
-# SALVA DB
+# SAVE RISPOSTE
 # =====================
 with open(DB_FILE, "w") as f:
-    json.dump(db, f, indent=2)
+    json.dump(
+        responses,
+        f,
+        indent=2,
+        ensure_ascii=False
+    )
 
 # =====================
-# SALVA OFFSET
+# SAVE OFFSET
 # =====================
 with open(OFFSET_FILE, "w") as f:
-    json.dump({"offset": max_offset}, f, indent=2)
+    json.dump(
+        {"offset": max_update_id},
+        f,
+        indent=2
+    )
 
-print("Receiver aggiornato")
+print("Receiver completato")

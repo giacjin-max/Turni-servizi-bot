@@ -23,16 +23,25 @@ else:
     responses = {}
 
 # =====================
-# EXCEL
+# EXCEL (dd/mm/yyyy)
 # =====================
 df = pd.read_excel("turni.xlsx")
-df = df[df["Data"].notna()].copy()
-df["Data"] = pd.to_datetime(df["Data"])
+
+# ✔ FIX IMPORTANTE PER FORMATO EUROPEO
+df["Data"] = pd.to_datetime(df["Data"], dayfirst=True)
 
 # =====================
 # PROSSIMO TURNO
 # =====================
-riga = df.sort_values("Data").iloc[0]
+future = df[df["Data"] >= pd.Timestamp.now().normalize()]
+
+if future.empty:
+    print("Nessun turno trovato")
+    exit()
+
+riga = future.sort_values("Data").iloc[0]
+
+# formato interno sistema
 date = riga["Data"].strftime("%Y-%m-%d")
 
 done = responses.get(date, {})
@@ -64,7 +73,6 @@ for s in servizi:
 
     valore = str(valore).strip()
 
-    # ❌ salta stringhe vuote
     if valore == "":
         continue
 
@@ -85,6 +93,8 @@ for s in servizi:
 missing = []
 
 for person in people_to_services.keys():
+
+    # se non ha risposto
     if person not in done:
         missing.append(person)
 
@@ -104,7 +114,6 @@ for person in missing:
 
     services = list(people_to_services[person])
 
-    # sicurezza extra
     if not services:
         continue
 
@@ -118,4 +127,4 @@ requests.post(url, data={
     "text": msg
 })
 
-print("Reminder inviato")
+print("Reminder inviato correttamente")

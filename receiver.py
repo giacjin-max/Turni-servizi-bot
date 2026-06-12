@@ -14,7 +14,7 @@ DB_FILE = "responses.json"
 OFFSET_FILE = "offset.json"
 
 # =====================
-# LOAD DATABASE RISPOSTE
+# LOAD DB RISPOSTE
 # =====================
 if os.path.exists(DB_FILE):
     db = json.load(open(DB_FILE))
@@ -22,7 +22,7 @@ else:
     db = {}
 
 # =====================
-# LOAD OFFSET (EVITA DUPLICATI UPDATE)
+# LOAD OFFSET (EVITA DUPLICATI)
 # =====================
 if os.path.exists(OFFSET_FILE):
     last_offset = json.load(open(OFFSET_FILE))["offset"]
@@ -54,10 +54,10 @@ for u in updates:
 
     cq = u["callback_query"]
 
-    user = cq["from"]["first_name"]
     user_id = cq["from"]["id"]
+    user_name = cq["from"]["first_name"]
 
-    data = cq["data"]  # es: ok|2026-01-20
+    data = cq["data"]  # ok|2026-06-12
 
     # =====================
     # PARSING CALLBACK
@@ -67,13 +67,10 @@ for u in updates:
     except:
         continue
 
-    if action == "ok":
-        status = "ok"
-    else:
-        status = "no"
+    status = "ok" if action == "ok" else "no"
 
     # =====================
-    # INIT DATE IN DB
+    # INIT DATE
     # =====================
     if date not in db:
         db[date] = {}
@@ -81,20 +78,20 @@ for u in updates:
     # =====================
     # SALVA RISPOSTA
     # =====================
-    db[date][user] = {
+    db[date][user_name] = {
         "status": status,
         "time": datetime.now().isoformat(),
         "user_id": user_id
     }
 
 # =====================
-# SAVE DB RISPOSTE
+# SALVA DB
 # =====================
 with open(DB_FILE, "w") as f:
     json.dump(db, f, indent=2)
 
 # =====================
-# SAVE OFFSET
+# SALVA OFFSET
 # =====================
 with open(OFFSET_FILE, "w") as f:
     json.dump({"offset": max_offset}, f, indent=2)

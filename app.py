@@ -38,10 +38,17 @@ def answer_callback(cb_id, text="✔ Salvato"):
 @app.route("/", methods=["POST"])
 def webhook():
 
-    data = request.json
+    data = request.get_json()
 
-    if "callback_query" not in data:
-        return "ok"
+    if "callback_query" in data:
+
+        cb = data["callback_query"]
+        user = cb["from"].get("username")
+        action = cb["data"]
+
+        print(user, action)
+
+    return "ok"
 
     cb = data["callback_query"]
     cb_id = cb["id"]

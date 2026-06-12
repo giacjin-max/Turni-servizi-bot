@@ -3,111 +3,57 @@ import json
 import requests
 from datetime import datetime
 
-# =====================
-# CONFIG
-# =====================
 BOT_TOKEN = os.environ["BOT_TOKEN"]
-
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
 
 DB_FILE = "responses.json"
 OFFSET_FILE = "offset.json"
 
-# =====================
-# LOAD DATABASE RISPOSTE
-# =====================
+# LOAD DB
 if os.path.exists(DB_FILE):
-    with open(DB_FILE, "r") as f:
-        db = json.load(f)
+    db = json.load(open(DB_FILE))
 else:
     db = {}
 
-# =====================
-# LOAD OFFSET (ANTI-DOPPIONI TELEGRAM)
-# =====================
+# LOAD OFFSET
 if os.path.exists(OFFSET_FILE):
-    with open(OFFSET_FILE, "r") as f:
-        offset_data = json.load(f)
-        last_update_id = offset_data.get("offset", 0)
+    last_update = json.load(open(OFFSET_FILE))["offset"]
 else:
-    last_update_id = 0
+    last_update = 0
 
-# =====================
-# CHIAMATA TELEGRAM
-# =====================
 resp = requests.get(url).json()
+updates = resp.get("result", [])
 
-if "result" not in resp:
-    print("Nessun update")
-    exit()
+max_update = last_update
 
-updates = resp["result"]
+for u in updates:
 
-# =====================
-# ELABORAZIONE UPDATE
-# =====================
-max_update_id = last_update_id
-
-for update in updates:
-
-    update_id = update["update_id"]
-
-    # evita duplicati già processati
-    if update_id <= last_update_id:
+    if u["update_id"] <= last_update:
         continue
 
-    max_update_id = max(max_update_id, update_id)
+    max_update = max(max_update, u["update_id"])
 
-    # solo click bottoni
-    if "callback_query" not in update:
+    if "callback_query" not in u:
         continue
 
-    cq = update["callback_query"]
+    cq = u["callback_query"]
 
     user = cq["from"]["first_name"]
+    data = cq["data"]
 
-    data = cq["data"]  # esempio: ok|2026-01-20
-
-    try:
-        action, date = data.split("|")
-    except:
-        continue
-
+    action, date = data.split("|")
     action = "ok" if action == "ok" else "no"
 
-    # =====================
-    # INIT DB DATE
-    # =====================
     if date not in db:
         db[date] = {}
 
-    # =====================
-    # ANTI-DOPPIONE CLICK
-    # =====================
     if user in db[date]:
-        print(f"{user} già registrato per {date}")
         continue
 
-    # =====================
-    # SALVA RISPOSTA
-    # =====================
     db[date][user] = {
         "status": action,
-        "timestamp": datetime.now().isoformat()
+        "time": datetime.now().isoformat()
     }
 
-    print(f"Salvato: {user} -> {action} ({date})")
-
-# =====================
-# SALVA DATABASE
-# =====================
-with open(DB_FILE, "w") as f:
-    json.dump(db, f, indent=2)
-
-# =====================
-# SALVA OFFSET
-# =====================
-with open(OFFSET_FILE, "w") as f:
-    json.dump({"offset": max_update_id}, f)
-
-print("Receiver aggiornato correttamente")
+json.dump(db, open(DB_FILE, "w"), indent=2)
+json.dump({"offset": max_update}, open(OFFSET_FILE, "w"), indent=2)

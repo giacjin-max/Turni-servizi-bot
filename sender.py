@@ -35,7 +35,7 @@ date = riga["Data"].strftime("%Y-%m-%d")
 done = responses.get(date, {})
 
 # =====================
-# USERS MAP
+# USERS
 # =====================
 users = {}
 
@@ -84,11 +84,6 @@ emoji = {
 # =====================
 msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
 
-keyboard_buttons = []
-
-# =====================
-# COSTRUZIONE
-# =====================
 for servizio in servizi:
 
     if servizio not in riga:
@@ -113,9 +108,6 @@ for servizio in servizi:
 
         tag = users.get(nome, nome)
 
-        # =====================
-        # GIÀ RISPOSTO
-        # =====================
         if nome in done:
 
             status = done[nome]["status"]
@@ -128,24 +120,24 @@ for servizio in servizi:
         else:
             msg += f"   ⏳ {tag}\n"
 
-            keyboard_buttons.append([
-                {
-                    "text": f"OK {nome}",
-                    "callback_data": f"ok|{date}|{nome}"
-                },
-                {
-                    "text": f"NO {nome}",
-                    "callback_data": f"no|{date}|{nome}"
-                }
-            ])
-
     msg += "\n"
 
 # =====================
-# BOTTONI
+# BOTTONI GLOBALI (SOLO 2)
 # =====================
 keyboard = {
-    "inline_keyboard": keyboard_buttons
+    "inline_keyboard": [
+        [
+            {
+                "text": "✅ OK",
+                "callback_data": f"ok|{date}"
+            },
+            {
+                "text": "❌ NON POSSO",
+                "callback_data": f"no|{date}"
+            }
+        ]
+    ]
 }
 
 # =====================
@@ -162,4 +154,4 @@ response = requests.post(
 
 print("STATUS:", response.status_code)
 print("RISPOSTA:", response.text)
-print("Turni inviati con stato utenti")
+print("Turni inviati con bottoni globali")

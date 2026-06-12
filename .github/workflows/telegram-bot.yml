@@ -2,8 +2,17 @@ name: Turni Telegram Bot
 
 on:
   workflow_dispatch:
+
   schedule:
-  - cron: "0 18 * * 4"   # giovedì sera SOLO reminder/sender
+    # Lunedì mattina (UTC 06:00 ≈ 08:00 Italia)
+    - cron: "0 6 * * 1"
+
+    # Mercoledì mattina
+    - cron: "0 6 * * 3"
+
+    # Sabato mattina
+    - cron: "0 6 * * 6"
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -12,7 +21,6 @@ jobs:
       contents: write
 
     steps:
-
       # =====================
       # CHECKOUT
       # =====================
@@ -31,45 +39,61 @@ jobs:
         run: pip install pandas openpyxl requests
 
       # =====================
-      # RESET SETTIMANALE SICURO
+      # MANUAL RUN (INVIA TURNI)
       # =====================
-      - name: Weekly reset
-        run: python reset.py
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-
-      # =====================
-      # RUN BOT
-      # =====================
-
-      - name: Run sender
+      - name: Manual run (sender)
+        if: github.event_name == 'workflow_dispatch'
         run: python sender.py
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
 
-      - name: Run receiver
-        run: python receiver.py
+      # =====================
+      # LUNEDÌ → SOLO TURNI
+      # =====================
+      - name: Monday sender
+        if: github.event_name == 'schedule' && github.event.schedule == '0 6 * * 1'
+        run: python sender.py
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
 
-      - name: Run reminder
+      # =====================
+      # MERCOLEDÌ → TURNI + REMINDER MANCANTI
+      # =====================
+      - name: Wednesday sender
+        if: github.event_name == 'schedule' && github.event.schedule == '0 6 * * 3'
+        run: python sender.py
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+
+      - name: Wednesday reminder (missing only)
+        if: github.event_name == 'schedule' && github.event.schedule == '0 6 * * 3'
         run: python reminder.py
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
 
       # =====================
-      # COMMIT DATI (PERSISTENZA)
+      # SABATO → REMINDER GENERALE
       # =====================
-      - name: Commit bot data
+      - name: Saturday reminder all
+        if: github.event_name == 'schedule' && github.event.schedule == '0 6 * * 6'
+        run: python reminder_all.py
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+
+      # =====================
+      # SALVATAGGIO STATO
+      # =====================
+      - name: Commit bot state
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
 
-          git add responses.json offset.json reminder_log.json
+          git add responses.json expected_users.json
 
           git diff --staged --quiet || git commit -m "Update bot state"
 

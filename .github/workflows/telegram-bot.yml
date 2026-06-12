@@ -3,8 +3,8 @@ name: Turni Telegram Bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 * * * *"     # sender + reminder (ogni ora)
-    - cron: "*/5 * * * *"   # receiver (ogni 5 minuti)
+    - cron: "0 * * * *"     # sender + reminder ogni ora
+    - cron: "*/5 * * * *"   # receiver ogni 5 minuti
 
 jobs:
   run:
@@ -14,6 +14,7 @@ jobs:
       contents: write
 
     steps:
+
       # =====================
       # CHECKOUT
       # =====================
@@ -32,24 +33,10 @@ jobs:
         run: pip install pandas openpyxl requests
 
       # =====================
-      # RESET SETTIMANALE (SICURO)
+      # RESET SETTIMANALE SICURO
       # =====================
-      - name: Weekly reset (safe inside sender logic)
-        run: python -c "
-import json;
-import datetime;
-
-now = datetime.datetime.now();
-
-# reset SOLO lunedì notte
-if now.weekday() == 0 and now.hour < 1:
-    json.dump({}, open('responses.json','w'));
-    json.dump({}, open('reminder_log.json','w'));
-    json.dump({'offset':0}, open('offset.json','w'));
-    print('Reset settimanale eseguito')
-else:
-    print('No reset')
-"
+      - name: Weekly reset
+        run: python reset.py
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
@@ -79,8 +66,7 @@ else:
       # =====================
       # COMMIT DATI (PERSISTENZA)
       # =====================
-
-      - name: Commit updated JSON files
+      - name: Commit bot data
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"

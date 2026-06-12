@@ -1,4 +1,5 @@
 from flask import Flask, request
+import json
 
 app = Flask(__name__)
 
@@ -7,9 +8,7 @@ def webhook():
 
     data = request.get_json(silent=True)
 
-    print("========== UPDATE ==========")
-    print(data)
-    print("============================")
+    print("UPDATE:", json.dumps(data, ensure_ascii=False), flush=True)
 
     return "ok", 200
 

@@ -3,8 +3,8 @@ name: Turni Telegram Bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 * * * *"   # ogni ora (sender + reminder)
-    - cron: "*/5 * * * *" # ogni 5 minuti (receiver)
+    - cron: "0 * * * *"     # sender + reminder (ogni ora)
+    - cron: "*/5 * * * *"   # receiver (ogni 5 minuti)
 
 jobs:
   run:
@@ -15,7 +15,7 @@ jobs:
 
     steps:
       # =====================
-      # CLONE REPO
+      # CHECKOUT
       # =====================
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -30,6 +30,29 @@ jobs:
 
       - name: Install dependencies
         run: pip install pandas openpyxl requests
+
+      # =====================
+      # RESET SETTIMANALE (SICURO)
+      # =====================
+      - name: Weekly reset (safe inside sender logic)
+        run: python -c "
+import json;
+import datetime;
+
+now = datetime.datetime.now();
+
+# reset SOLO lunedì notte
+if now.weekday() == 0 and now.hour < 1:
+    json.dump({}, open('responses.json','w'));
+    json.dump({}, open('reminder_log.json','w'));
+    json.dump({'offset':0}, open('offset.json','w'));
+    print('Reset settimanale eseguito')
+else:
+    print('No reset')
+"
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
 
       # =====================
       # RUN BOT
@@ -54,7 +77,7 @@ jobs:
           CHAT_ID: ${{ secrets.CHAT_ID }}
 
       # =====================
-      # SALVATAGGIO DATI
+      # COMMIT DATI (PERSISTENZA)
       # =====================
 
       - name: Commit updated JSON files
@@ -64,7 +87,7 @@ jobs:
 
           git add responses.json offset.json reminder_log.json
 
-          git diff --staged --quiet || git commit -m "Update bot data"
+          git diff --staged --quiet || git commit -m "Update bot state"
 
       - name: Push changes
         run: git push

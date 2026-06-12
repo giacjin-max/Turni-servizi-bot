@@ -1,8 +1,41 @@
-import os
 import json
-import pandas as pd
-import requests
+import os
 from datetime import datetime
+
+LOCK_FILE = "sent_log.json"
+
+def already_sent(date):
+    if not os.path.exists(LOCK_FILE):
+        return False
+
+    with open(LOCK_FILE, "r") as f:
+        data = json.load(f)
+
+    return data.get(date, False)
+
+
+def mark_sent(date):
+    data = {}
+
+    if os.path.exists(LOCK_FILE):
+        with open(LOCK_FILE, "r") as f:
+            data = json.load(f)
+
+    data[date] = True
+
+    with open(LOCK_FILE, "w") as f:
+        json.dump(data, f)
+
+
+def send_turni_once(date, msg, send_function):
+
+    if already_sent(date):
+        print("GIÀ INVIATO:", date)
+        return
+
+    send_function(msg)
+    mark_sent(date)
+    print("INVIATO:", date)
 
 # =====================
 # CONFIG

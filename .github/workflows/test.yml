@@ -1,14 +1,17 @@
-name: Turni Telegram
+name: Turni Telegram Bot
 
 on:
   workflow_dispatch:
-
   schedule:
-    - cron: "0 18 * * 6"
+    - cron: "0 * * * *"   # sender + reminder ogni ora
+    - cron: "*/5 * * * *" # receiver ogni 5 minuti
 
 jobs:
-  send:
+  run:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -19,7 +22,20 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - run: python turni.py
+      - name: Run sender
+        run: python sender.py
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+
+      - name: Run receiver
+        run: python receiver.py
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+
+      - name: Run reminder
+        run: python reminder.py
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}

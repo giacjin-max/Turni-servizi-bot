@@ -1,8 +1,7 @@
 from flask import Flask, request
 import os
-import json
-from datetime import datetime
 import requests
+import json
 
 app = Flask(__name__)
 
@@ -10,79 +9,78 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 DB_FILE = "responses.json"
 
-# =====================
-# LOAD DB
-# =====================
-if os.path.exists(DB_FILE):
-    with open(DB_FILE, "r") as f:
-        responses = json.load(f)
-else:
-    responses = {}
 
-# =====================
+# =========================
+# LOAD DB
+# =========================
+def load_db():
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+
+def save_db(db):
+    with open(DB_FILE, "w") as f:
+        json.dump(db, f, indent=2)
+
+
+# =========================
 # TELEGRAM ANSWER
-# =====================
-def answer_callback(cb_id, text="✔ Salvato"):
+# =========================
+def answer(cb_id, text="Salvato ✔"):
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
         data={
             "callback_query_id": cb_id,
-            "text": text,
-            "show_alert": False
+            "text": text
         }
     )
 
-# =====================
-# WEBHOOK ENDPOINT
-# =====================
+
+# =========================
+# WEBHOOK
+# =========================
 @app.route("/", methods=["POST"])
 def webhook():
 
     data = request.get_json()
 
-    if "callback_query" in data:
+    # 🔥 DEBUG (QUI)
+    print("INCOMING UPDATE:", data)
 
-        cb = data["callback_query"]
-        user = cb["from"].get("username")
-        action = cb["data"]
-
-        print(user, action)
-
-    return "ok"
-
-    cb = data["callback_query"]
-    cb_id = cb["id"]
-    user = cb["from"]
-    callback_data = cb["data"]
-
-    try:
-        action, date = callback_data.split("|")
-    except:
+    if not data:
         return "ok"
 
-    username = user.get("username")
-    user_key = f"@{username}" if username else str(user["id"])
+    if "callback_query" not in data:
+        return "ok"
 
-    # =====================
-    # SALVA RISPOSTA
-    # =====================
-    if date not in responses:
-        responses[date] = {}
+    cb = data["callback_query"]
 
-    responses[date][user_key] = {
-        "status": action,
-        "updated_at": datetime.now().isoformat()
-    }
+    cb_id = cb["id"]
+    user = cb["from"].get("username") or str(cb["from"]["id"])
 
-    with open(DB_FILE, "w") as f:
-        json.dump(responses, f, indent=2)
+    raw = cb.get("data", "")
 
-    # =====================
-    # RISPOSTA IMMEDIATA BOT
-    # =====================
-    answer_callback(cb_id)
+    print("CLICK DATA:", raw)  # 🔥 DEBUG
 
-    print(f"{user_key} -> {action}")
+    if "|" not in raw:
+        return "ok"
+
+    action, date = raw.split("|", 1)
+
+    db = load_db()
+
+    if date not in db:
+        db[date] = {}
+
+    db[date][user] = action
+
+    save_db(db)
+
+    answer(cb_id, f"{action} salvato ✔")
+
+    print(f"SAVED: {user} -> {action} ({date})")
 
     return "ok"
 

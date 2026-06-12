@@ -3,6 +3,9 @@ import json
 import requests
 from datetime import datetime
 
+# =====================
+# CONFIG
+# =====================
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 GET_UPDATES_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
@@ -25,19 +28,23 @@ else:
 # =====================
 if os.path.exists(OFFSET_FILE):
     with open(OFFSET_FILE, "r") as f:
-        offset_data = json.load(f)
-        offset = offset_data.get("offset", 0)
+        offset = json.load(f).get("offset", 0)
 else:
     offset = 0
 
 # =====================
 # GET UPDATES
 # =====================
-data = requests.get(GET_UPDATES_URL).json()
+resp = requests.get(GET_UPDATES_URL, timeout=10)
+data = resp.json()
+
 updates = data.get("result", [])
 
 max_offset = offset
 
+# =====================
+# LOOP UPDATES
+# =====================
 for update in updates:
 
     update_id = update["update_id"]
@@ -55,9 +62,6 @@ for update in updates:
     cb_id = cb["id"]
     user = cb["from"]
 
-    username = user.get("username")
-    user_id = str(user["id"])
-
     callback_data = cb["data"]
 
     # =====================
@@ -68,31 +72,33 @@ for update in updates:
     except:
         continue
 
-    user_key = f"@{username}" if username else user_id
+    username = user.get("username")
+    user_key = f"@{username}" if username else str(user["id"])
 
+    # =====================
+    # 1. RISPOSTA IMMEDIATA (CRITICO)
+    # =====================
+    requests.post(
+        ANSWER_URL,
+        data={
+            "callback_query_id": cb_id,
+            "text": "✔ Salvato",
+            "show_alert": False
+        }
+    )
+
+    # =====================
+    # 2. SALVATAGGIO RISPOSTA
+    # =====================
     if date not in responses:
         responses[date] = {}
 
-    # =====================
-    # SALVA RISPOSTA
-    # =====================
     responses[date][user_key] = {
         "status": action,
         "updated_at": datetime.now().isoformat()
     }
 
-    # =====================
-    # FEEDBACK BOT
-    # =====================
-    text = "✅ Salvato" if action == "ok" else "❌ Salvato"
-
-    requests.post(ANSWER_URL, data={
-        "callback_query_id": cb_id,
-        "text": text,
-        "show_alert": False
-    })
-
-    print(user_key, action, date)
+    print(f"{user_key} -> {action} ({date})")
 
 # =====================
 # SAVE RISPOSTE

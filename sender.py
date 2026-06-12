@@ -4,68 +4,40 @@ import pandas as pd
 import requests
 from datetime import datetime
 
-# =====================
-# CONFIG
-# =====================
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 
-SEND_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-LOG_FILE = "sent_log.json"
+url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 # =====================
-# ORARIO INVIO
+# LOAD RISPOSTE
 # =====================
-now = datetime.now()
-
-weekday = now.weekday()  # lun=0 ... dom=6
-hour = now.hour
-
-send = False
-message_type = ""
-
-# LUNEDI' SERA
-if weekday == 0 and hour >= 18:
-    send = True
-    message_type = "monday"
-
-# SABATO MATTINA
-elif weekday == 5 and hour < 12:
-    send = True
-    message_type = "saturday"
-
-if not send:
-    print("Non è orario di invio")
-    exit()
-
-# =====================
-# LOAD LOG
-# =====================
-if os.path.exists(LOG_FILE):
-    with open(LOG_FILE, "r") as f:
-        sent_log = json.load(f)
+if os.path.exists("responses.json"):
+    with open("responses.json", "r") as f:
+        responses = json.load(f)
 else:
-    sent_log = {}
-
-today_key = f"{now.strftime('%Y-%m-%d')}_{message_type}"
-
-if sent_log.get(today_key):
-    print("Messaggio già inviato")
-    exit()
+    responses = {}
 
 # =====================
-# LEGGI EXCEL
+# EXCEL
 # =====================
 df = pd.read_excel("turni.xlsx")
+df = df[df["Data"].notna()].copy()
+df["Data"] = pd.to_datetime(df["Data"])
 
-# Mappa Nome -> Username
+riga = df.sort_values("Data").iloc[0]
+date = riga["Data"].strftime("%Y-%m-%d")
+
+done = responses.get(date, {})
+
+# =====================
+# USERS
+# =====================
 users = {}
 
 for _, row in df.iterrows():
 
     nome = str(row["Nome"]).strip()
-
     username = row.get("Username Telegram")
 
     if pd.notna(username):
@@ -78,54 +50,12 @@ for _, row in df.iterrows():
         users[nome] = username
 
 # =====================
-# TROVA PROSSIMO TURNO
-# =====================
-turni = df[df["Data"].notna()].copy()
-
-turni["Data"] = pd.to_datetime(turni["Data"])
-
-oggi = pd.Timestamp.now().normalize()
-
-future = turni[turni["Data"] >= oggi]
-
-if future.empty:
-    raise Exception("Nessun turno futuro trovato")
-
-riga = future.sort_values("Data").iloc[0]
-
-data_turno = riga["Data"]
-
-# =====================
-# TITOLO
-# =====================
-if message_type == "monday":
-    titolo = "📌 Turni della settimana"
-else:
-    titolo = "🔔 Promemoria turni"
-
-msg = (
-    f"{titolo}\n\n"
-    f"📅 Domenica {data_turno.strftime('%d/%m/%Y')}\n\n"
-)
-
-# =====================
 # SERVIZI
 # =====================
 servizi = [
-    "Parola",
-    "Adorazione",
-    "Coro",
-    "BimbiGiovani",
-    "Piano",
-    "Bass",
-    "Chitarra",
-    "Mix",
-    "PC",
-    "Porta",
-    "Pulizia",
-    "Pulizia sala bimbi",
-    "Traduzione",
-    "Ronda",
+    "Parola","Adorazione","Coro","BimbiGiovani","Piano","Bass",
+    "Chitarra","Mix","PC","Porta","Pulizia","Pulizia sala bimbi",
+    "Traduzione","Ronda",
 ]
 
 emoji = {
@@ -146,11 +76,25 @@ emoji = {
 }
 
 # =====================
-# COSTRUISCI MESSAGGIO
+# MESSAGGIO
+# =====================
+msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
+
+keyboard = {
+    "inline_keyboard": []
+}
+
+row_buttons = []
+
+# =====================
+# COSTRUZIONE SERVIZI
 # =====================
 for servizio in servizi:
 
-    valore = riga.get(servizio)
+    if servizio not in riga:
+        continue
+
+    valore = riga[servizio]
 
     if pd.isna(valore):
         continue
@@ -160,63 +104,54 @@ for servizio in servizi:
         for x in str(valore).replace(";", ",").split(",")
     ]
 
-    utenti = []
+    msg += f"{emoji.get(servizio,'•')} {servizio}\n"
 
     for nome in nomi:
 
-        if nome in users:
-            utenti.append(users[nome])
-        else:
-            utenti.append(nome)
+        if not nome:
+            continue
 
-    msg += f"{emoji.get(servizio,'•')} {servizio}\n"
-    msg += "\n".join(utenti)
-    msg += "\n\n"
+        tag = users.get(nome, nome)
+
+        # =====================
+        # SE HA GIÀ RISPOSTO
+        # =====================
+        if nome in done:
+            status = done[nome]["status"]
+
+            if status == "ok":
+                msg += f"   ✅ {tag} (già confermato)\n"
+            else:
+                msg += f"   ❌ {tag} (non disponibile)\n"
+
+        else:
+            msg += f"   ⏳ {tag}\n"
+
+            # aggiungi ai bottoni SOLO chi non ha risposto
+            row_buttons.append({
+                "text": f"OK {nome}",
+                "callback_data": f"ok|{date}|{nome}"
+            })
+
+            row_buttons.append({
+                "text": f"NO {nome}",
+                "callback_data": f"no|{date}|{nome}"
+            })
+
+    msg += "\n"
 
 # =====================
 # BOTTONI
 # =====================
-keyboard = {
-    "inline_keyboard": [
-        [
-            {
-                "text": "✅ OK",
-                "callback_data": f"ok|{data_turno.strftime('%Y-%m-%d')}"
-            },
-            {
-                "text": "❌ NON POSSO",
-                "callback_data": f"no|{data_turno.strftime('%Y-%m-%d')}"
-            }
-        ]
-    ]
-}
+keyboard["inline_keyboard"] = [row_buttons[i:i+2] for i in range(0, len(row_buttons), 2)]
 
 # =====================
-# INVIO TELEGRAM
+# INVIO
 # =====================
-response = requests.post(
-    SEND_URL,
-    data={
-        "chat_id": CHAT_ID,
-        "text": msg,
-        "reply_markup": json.dumps(keyboard),
-    },
-)
+requests.post(url, data={
+    "chat_id": CHAT_ID,
+    "text": msg,
+    "reply_markup": json.dumps(keyboard)
+})
 
-print("STATUS:", response.status_code)
-print("RISPOSTA:", response.text)
-
-# =====================
-# SALVA LOG
-# =====================
-if response.status_code == 200:
-
-    sent_log[today_key] = {
-        "sent_at": now.isoformat(),
-        "turno": data_turno.strftime("%Y-%m-%d")
-    }
-
-    with open(LOG_FILE, "w") as f:
-        json.dump(sent_log, f, indent=2)
-
-    print("Invio registrato")
+print("Turni inviati con stato utenti")

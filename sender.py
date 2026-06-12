@@ -101,7 +101,7 @@ for col in df.columns:
 
         tag = to_tag(nome)
 
-        msg += f"   ⏳ {tag}\n"
+        msg += f"    {tag}\n"
 
         # salva per reminder / tracking
         expected_users.add(tag.replace("@", "").lower())

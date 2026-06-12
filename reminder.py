@@ -27,7 +27,7 @@ else:
 # =====================
 df = pd.read_excel("turni.xlsx")
 
-# ✔ FIX IMPORTANTE PER FORMATO EUROPEO
+# ✔ IMPORTANTE: formato europeo
 df["Data"] = pd.to_datetime(df["Data"], dayfirst=True)
 
 # =====================
@@ -41,10 +41,30 @@ if future.empty:
 
 riga = future.sort_values("Data").iloc[0]
 
-# formato interno sistema
 date = riga["Data"].strftime("%Y-%m-%d")
 
 done = responses.get(date, {})
+
+# =====================
+# MAPPA NOME → USERNAME (col A/B)
+# =====================
+users = {}
+
+for _, row in df.iterrows():
+
+    nome = str(row.iloc[0]).strip()
+    username = row.iloc[1]
+
+    if pd.notna(username):
+        username = str(username).strip()
+
+        if not username.startswith("@"):
+            username = "@" + username
+
+        users[nome] = username
+
+def display_name(nome):
+    return users.get(nome, nome)
 
 # =====================
 # SERVIZI
@@ -56,7 +76,7 @@ servizi = [
 ]
 
 # =====================
-# MAPPA PERSONA -> SERVIZI
+# MAPPA PERSONA → SERVIZI
 # =====================
 people_to_services = defaultdict(set)
 
@@ -79,9 +99,9 @@ for s in servizi:
     nomi = valore.replace(";", ",").split(",")
 
     for n in nomi:
+
         n = n.strip()
 
-        # ❌ salta vuoti
         if not n:
             continue
 
@@ -94,7 +114,6 @@ missing = []
 
 for person in people_to_services.keys():
 
-    # se non ha risposto
     if person not in done:
         missing.append(person)
 
@@ -117,7 +136,7 @@ for person in missing:
     if not services:
         continue
 
-    msg += f"• {person} ({', '.join(services)})\n"
+    msg += f"• {display_name(person)} ({', '.join(services)})\n"
 
 # =====================
 # INVIO TELEGRAM

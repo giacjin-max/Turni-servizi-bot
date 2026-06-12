@@ -2,6 +2,7 @@ import os
 import json
 import pandas as pd
 import requests
+from collections import defaultdict
 
 # =====================
 # CONFIG
@@ -12,7 +13,6 @@ CHAT_ID = os.environ["CHAT_ID"]
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 DB_FILE = "responses.json"
-REMINDER_LOG_FILE = "reminder_log.json"
 
 # =====================
 # LOAD RISPOSTE
@@ -23,14 +23,6 @@ else:
     responses = {}
 
 # =====================
-# LOAD REMINDER LOG (ANTI-SPAM)
-# =====================
-if os.path.exists(REMINDER_LOG_FILE):
-    reminder_log = json.load(open(REMINDER_LOG_FILE))
-else:
-    reminder_log = {}
-
-# =====================
 # EXCEL
 # =====================
 df = pd.read_excel("turni.xlsx")
@@ -38,33 +30,15 @@ df = df[df["Data"].notna()].copy()
 df["Data"] = pd.to_datetime(df["Data"])
 
 # =====================
-# USERS MAP (Nome → @username)
-# =====================
-users = {}
-
-for _, row in df.iterrows():
-    nome = str(row["Nome"]).strip()
-    username = row.get("Username Telegram")
-
-    if pd.notna(username):
-        username = str(username).strip()
-        if not username.startswith("@"):
-            username = "@" + username
-
-        users[nome] = username
-
-# =====================
 # PROSSIMO TURNO
 # =====================
 riga = df.sort_values("Data").iloc[0]
 date = riga["Data"].strftime("%Y-%m-%d")
 
-# init log data
-if date not in reminder_log:
-    reminder_log[date] = {}
+done = responses.get(date, {})
 
 # =====================
-# NOMI SERVIZI
+# SERVIZI
 # =====================
 servizi = [
     "Parola","Adorazione","Coro","BimbiGiovani","Piano","Bass",
@@ -72,35 +46,53 @@ servizi = [
     "Traduzione","Ronda"
 ]
 
-names = []
+# =====================
+# MAPPA PERSONA -> SERVIZI
+# =====================
+people_to_services = defaultdict(set)
 
 for s in servizi:
-    if s in riga and pd.notna(riga[s]):
-        names += str(riga[s]).replace(";", ",").split(",")
 
-names = [n.strip() for n in names]
+    if s not in riga:
+        continue
+
+    valore = riga[s]
+
+    # ❌ salta ruoli vuoti
+    if pd.isna(valore):
+        continue
+
+    valore = str(valore).strip()
+
+    # ❌ salta stringhe vuote
+    if valore == "":
+        continue
+
+    nomi = valore.replace(";", ",").split(",")
+
+    for n in nomi:
+        n = n.strip()
+
+        # ❌ salta nomi vuoti
+        if n == "":
+            continue
+
+        people_to_services[n].add(s)
 
 # =====================
-# RISPOSTE GIA FATTE
-# =====================
-done = responses.get(date, {})
-
-# =====================
-# TROVA MANCANTI (NO DUPLICATI REMINDER)
+# TROVA MANCANTI
 # =====================
 missing = []
 
-for n in names:
-    tag = users.get(n, n)
-
-    if n not in done and not reminder_log[date].get(tag):
-        missing.append(n)
+for person in people_to_services.keys():
+    if person not in done:
+        missing.append(person)
 
 # =====================
 # STOP SE TUTTI HANNO RISPOSTO
 # =====================
 if not missing:
-    print("Tutti hanno già risposto 👍")
+    print("Tutti hanno risposto 👍")
     exit()
 
 # =====================
@@ -108,9 +100,15 @@ if not missing:
 # =====================
 msg = "⏳ Reminder: non hanno ancora risposto al turno\n\n"
 
-for n in missing:
-    tag = users.get(n, n)
-    msg += f"{tag} ({n})\n"
+for person in missing:
+
+    services = list(people_to_services[person])
+
+    # sicurezza extra
+    if not services:
+        continue
+
+    msg += f"• {person} ({', '.join(services)})\n"
 
 # =====================
 # INVIO TELEGRAM
@@ -120,14 +118,4 @@ requests.post(url, data={
     "text": msg
 })
 
-# =====================
-# SALVA ANTI-SPAM
-# =====================
-for n in missing:
-    tag = users.get(n, n)
-    reminder_log[date][tag] = True
-
-with open(REMINDER_LOG_FILE, "w") as f:
-    json.dump(reminder_log, f, indent=2)
-
-print("Reminder inviato e salvato")
+print("Reminder inviato")

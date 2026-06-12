@@ -4,6 +4,9 @@ import pandas as pd
 import requests
 from datetime import datetime
 
+# =====================
+# CONFIG
+# =====================
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 
@@ -25,13 +28,14 @@ df = pd.read_excel("turni.xlsx")
 df = df[df["Data"].notna()].copy()
 df["Data"] = pd.to_datetime(df["Data"])
 
+# prossimo turno
 riga = df.sort_values("Data").iloc[0]
 date = riga["Data"].strftime("%Y-%m-%d")
 
 done = responses.get(date, {})
 
 # =====================
-# USERS
+# USERS MAP
 # =====================
 users = {}
 
@@ -80,14 +84,10 @@ emoji = {
 # =====================
 msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
 
-keyboard = {
-    "inline_keyboard": []
-}
-
-row_buttons = []
+keyboard_buttons = []
 
 # =====================
-# COSTRUZIONE SERVIZI
+# COSTRUZIONE
 # =====================
 for servizio in servizi:
 
@@ -114,44 +114,52 @@ for servizio in servizi:
         tag = users.get(nome, nome)
 
         # =====================
-        # SE HA GIÀ RISPOSTO
+        # GIÀ RISPOSTO
         # =====================
         if nome in done:
+
             status = done[nome]["status"]
 
             if status == "ok":
-                msg += f"   ✅ {tag} (già confermato)\n"
+                msg += f"   ✅ {tag} (confermato)\n"
             else:
                 msg += f"   ❌ {tag} (non disponibile)\n"
 
         else:
             msg += f"   ⏳ {tag}\n"
 
-            # aggiungi ai bottoni SOLO chi non ha risposto
-            row_buttons.append({
-                "text": f"OK {nome}",
-                "callback_data": f"ok|{date}|{nome}"
-            })
-
-            row_buttons.append({
-                "text": f"NO {nome}",
-                "callback_data": f"no|{date}|{nome}"
-            })
+            keyboard_buttons.append([
+                {
+                    "text": f"OK {nome}",
+                    "callback_data": f"ok|{date}|{nome}"
+                },
+                {
+                    "text": f"NO {nome}",
+                    "callback_data": f"no|{date}|{nome}"
+                }
+            ])
 
     msg += "\n"
 
 # =====================
 # BOTTONI
 # =====================
-keyboard["inline_keyboard"] = [row_buttons[i:i+2] for i in range(0, len(row_buttons), 2)]
+keyboard = {
+    "inline_keyboard": keyboard_buttons
+}
 
 # =====================
 # INVIO
 # =====================
-requests.post(url, data={
-    "chat_id": CHAT_ID,
-    "text": msg,
-    "reply_markup": json.dumps(keyboard)
-})
+response = requests.post(
+    url,
+    data={
+        "chat_id": CHAT_ID,
+        "text": msg,
+        "reply_markup": json.dumps(keyboard)
+    }
+)
 
+print("STATUS:", response.status_code)
+print("RISPOSTA:", response.text)
 print("Turni inviati con stato utenti")

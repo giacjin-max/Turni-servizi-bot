@@ -16,7 +16,7 @@ url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 # ORARIO
 # =====================
 now = datetime.now()
-weekday = now.weekday()  # lun=0 ... dom=6
+weekday = now.weekday()
 hour = now.hour
 
 send = False
@@ -44,7 +44,7 @@ if not send:
     exit()
 
 # =====================
-# ANTI-DOPPIONE INVIO
+# ANTI-DOPPIONE
 # =====================
 LOG_FILE = "sent_log.json"
 
@@ -60,13 +60,35 @@ if sent_log.get(today_key) and mode == "full":
     exit()
 
 # =====================
-# EXCEL (IMPORTANTE: dd/mm/yyyy)
+# EXCEL (colonna A = Nome, B = Username)
 # =====================
 df = pd.read_excel("turni.xlsx")
-
-# ✔ FIX CRITICO PER FORMATO EUROPEO
 df["Data"] = pd.to_datetime(df["Data"], dayfirst=True)
 
+# =====================
+# MAPPA NOME → USERNAME
+# =====================
+users = {}
+
+for _, row in df.iterrows():
+
+    nome = str(row.iloc[0]).strip()
+    username = row.iloc[1]
+
+    if pd.notna(username):
+        username = str(username).strip()
+
+        if not username.startswith("@"):
+            username = "@" + username
+
+        users[nome] = username
+
+def display_name(nome):
+    return users.get(nome, nome)
+
+# =====================
+# PROSSIMO TURNO
+# =====================
 future = df[df["Data"] >= pd.Timestamp.now().normalize()]
 
 if future.empty:
@@ -74,10 +96,6 @@ if future.empty:
     exit()
 
 riga = future.sort_values("Data").iloc[0]
-
-# =====================
-# FORMATO INTERNO (PER SYSTEM)
-# =====================
 data_turno = riga["Data"].strftime("%Y-%m-%d")
 
 # =====================
@@ -110,6 +128,9 @@ for s in servizi:
     if not nomi:
         continue
 
+    # 🔥 sostituzione nomi → username
+    nomi = [display_name(n) for n in nomi]
+
     msg += f"• {s}: {', '.join(nomi)}\n"
 
 # =====================
@@ -131,7 +152,7 @@ keyboard = {
 }
 
 # =====================
-# INVIO TELEGRAM
+# INVIO
 # =====================
 requests.post(url, data={
     "chat_id": CHAT_ID,

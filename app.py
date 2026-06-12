@@ -8,31 +8,37 @@ app = Flask(__name__)
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 DB_FILE = "responses.json"
-EXPECTED_FILE = "expected_users.json"
 
 
 # =====================
-# LOAD/SAVE DB
+# DB
 # =====================
 def load_db():
     try:
-        with open(DB_FILE, "r") as f:
+        with open(DB_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except:
         return {}
 
+
 def save_db(db):
-    with open(DB_FILE, "w") as f:
-        json.dump(db, f, indent=2)
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(db, f, indent=2, ensure_ascii=False)
 
 
-def load_expected(date):
-    try:
-        with open(EXPECTED_FILE, "r") as f:
-            data = json.load(f)
-        return data.get(date, [])
-    except:
-        return []
+# =====================
+# ESTRAI UTENTI DAL MESSAGGIO TURNI
+# =====================
+def extract_expected_users(text):
+    users = set()
+
+    for line in text.split("\n"):
+        if "@" in line:
+            for word in line.split():
+                if word.startswith("@"):
+                    users.add(word.strip())
+
+    return users
 
 
 # =====================
@@ -61,15 +67,14 @@ def webhook():
 
     action, date = cb["data"].split("|")
 
-    # =====================
-    # DB
-    # =====================
     db = load_db()
 
     if date not in db:
         db[date] = {}
 
-    # BLOCCA DOPPIO CLICK
+    # =====================
+    # BLOCCO DOPPIO CLICK
+    # =====================
     if username in db[date]:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
@@ -80,19 +85,22 @@ def webhook():
         )
         return "ok", 200
 
-    # SALVA
+    # =====================
+    # SALVA RISPOSTA
+    # =====================
     db[date][username] = action
     save_db(db)
 
     # =====================
-    # EXPECTED USERS
+    # UTENTI ATTESI (DA MESSAGGIO)
     # =====================
-    expected = load_expected(date)
-    total_expected = len(set(expected))
-    done = len(db[date])
+    expected_users = extract_expected_users(cb["message"]["text"])
+    responded_users = set(db[date].keys())
+
+    remaining = len(expected_users - responded_users)
 
     # =====================
-    # STATUS LIST
+    # LISTA RISPOSTE
     # =====================
     ok_users = []
     no_users = []
@@ -108,27 +116,32 @@ def webhook():
     status_text += "✅ OK:\n" + ("\n".join(ok_users) if ok_users else "-")
     status_text += "\n\n❌ NON POSSO:\n" + ("\n".join(no_users) if no_users else "-")
 
-    remaining = max(total_expected - done, 0)
-
     status_text += f"\n\n⏳ Mancano {remaining} risposte"
 
     # =====================
     # CHIUSURA BOTTONI
     # =====================
-    keyboard = {
-        "inline_keyboard": [
-            [
-                {"text": "🔒 Risposte chiuse" if remaining == 0 else "✅ OK", "callback_data": f"ok|{date}"},
-                {"text": "🔒 Risposte chiuse" if remaining == 0 else "❌ NON POSSO", "callback_data": f"no|{date}"}
-            ]
-        ]
-    }
-
     if remaining == 0:
         keyboard = {"inline_keyboard": []}
+        status_text += "\n\n🔒 Risposte chiuse"
+    else:
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "✅ OK",
+                        "callback_data": f"ok|{date}"
+                    },
+                    {
+                        "text": "❌ NON POSSO",
+                        "callback_data": f"no|{date}"
+                    }
+                ]
+            ]
+        }
 
     # =====================
-    # EDIT MESSAGGIO
+    # AGGIORNA MESSAGGIO
     # =====================
     original = cb["message"]["text"]
 
@@ -157,6 +170,11 @@ def webhook():
     )
 
     return "ok", 200
+
+
+@app.route("/", methods=["GET"])
+def home():
+    return "Webhook attivo", 200
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ import os
 import json
 import pandas as pd
 import requests
-from collections import defaultdict
+from datetime import datetime
 
 # =====================
 # CONFIG
@@ -12,30 +12,73 @@ CHAT_ID = os.environ["CHAT_ID"]
 
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-DB_FILE = "responses.json"
+# =====================
+# ORARIO
+# =====================
+now = datetime.now()
+weekday = now.weekday()  # lun=0 ... dom=6
+hour = now.hour
+
+send = False
+mode = "full"
+prefix = ""
 
 # =====================
-# LOAD RISPOSTE
+# LOGICA GIORNI
 # =====================
-if os.path.exists(DB_FILE):
-    responses = json.load(open(DB_FILE))
+
+# LUNEDÌ SERA → INVIO COMPLETO
+if weekday == 0 and hour >= 18:
+    send = True
+    mode = "full"
+    prefix = "📌 Turni settimana"
+
+# SABATO MATTINA → REMINDER GENERALE
+elif weekday == 5 and hour < 12:
+    send = True
+    mode = "full"
+    prefix = "📅 Reminder weekend"
+
+if not send:
+    print("⛔ Fuori orario invio")
+    exit()
+
+# =====================
+# ANTI-DOPPIONE INVIO
+# =====================
+LOG_FILE = "sent_log.json"
+
+if os.path.exists(LOG_FILE):
+    sent_log = json.load(open(LOG_FILE))
 else:
-    responses = {}
+    sent_log = {}
+
+today_key = now.strftime("%Y-%m-%d")
+
+if sent_log.get(today_key) and mode == "full":
+    print("⛔ Già inviato oggi")
+    exit()
 
 # =====================
-# EXCEL
+# EXCEL (IMPORTANTE: dd/mm/yyyy)
 # =====================
 df = pd.read_excel("turni.xlsx")
-df = df[df["Data"].notna()].copy()
-df["Data"] = pd.to_datetime(df["Data"])
+
+# ✔ FIX CRITICO PER FORMATO EUROPEO
+df["Data"] = pd.to_datetime(df["Data"], dayfirst=True)
+
+future = df[df["Data"] >= pd.Timestamp.now().normalize()]
+
+if future.empty:
+    print("Nessun turno trovato")
+    exit()
+
+riga = future.sort_values("Data").iloc[0]
 
 # =====================
-# PROSSIMO TURNO
+# FORMATO INTERNO (PER SYSTEM)
 # =====================
-riga = df.sort_values("Data").iloc[0]
-date = riga["Data"].strftime("%Y-%m-%d")
-
-done = responses.get(date, {})
+data_turno = riga["Data"].strftime("%Y-%m-%d")
 
 # =====================
 # SERVIZI
@@ -47,9 +90,9 @@ servizi = [
 ]
 
 # =====================
-# MAPPA PERSONA -> SERVIZI
+# MESSAGGIO
 # =====================
-people_to_services = defaultdict(set)
+msg = f"{prefix}\n\n📅 Turni Domenica {riga['Data'].strftime('%d/%m/%Y')}\n\n"
 
 for s in servizi:
 
@@ -58,64 +101,49 @@ for s in servizi:
 
     valore = riga[s]
 
-    # ❌ salta ruoli vuoti
     if pd.isna(valore):
         continue
 
-    valore = str(valore).strip()
+    nomi = str(valore).replace(";", ",").split(",")
+    nomi = [n.strip() for n in nomi if n.strip()]
 
-    # ❌ salta stringhe vuote
-    if valore == "":
+    if not nomi:
         continue
 
-    nomi = valore.replace(";", ",").split(",")
-
-    for n in nomi:
-        n = n.strip()
-
-        # ❌ salta nomi vuoti
-        if n == "":
-            continue
-
-        people_to_services[n].add(s)
+    msg += f"• {s}: {', '.join(nomi)}\n"
 
 # =====================
-# TROVA MANCANTI
+# BOTTONI
 # =====================
-missing = []
-
-for person in people_to_services.keys():
-    if person not in done:
-        missing.append(person)
-
-# =====================
-# STOP SE TUTTI HANNO RISPOSTO
-# =====================
-if not missing:
-    print("Tutti hanno risposto 👍")
-    exit()
-
-# =====================
-# MESSAGGIO
-# =====================
-msg = "⏳ Reminder: non hanno ancora risposto al turno\n\n"
-
-for person in missing:
-
-    services = list(people_to_services[person])
-
-    # sicurezza extra
-    if not services:
-        continue
-
-    msg += f"• {person} ({', '.join(services)})\n"
+keyboard = {
+    "inline_keyboard": [
+        [
+            {
+                "text": "✅ OK",
+                "callback_data": f"ok|{data_turno}"
+            },
+            {
+                "text": "❌ NON POSSO",
+                "callback_data": f"no|{data_turno}"
+            }
+        ]
+    ]
+}
 
 # =====================
 # INVIO TELEGRAM
 # =====================
 requests.post(url, data={
     "chat_id": CHAT_ID,
-    "text": msg
+    "text": msg,
+    "reply_markup": json.dumps(keyboard)
 })
 
-print("Reminder inviato")
+# =====================
+# SALVA LOG
+# =====================
+if mode == "full":
+    sent_log[today_key] = True
+    json.dump(sent_log, open(LOG_FILE, "w"), indent=2)
+
+print("Sender eseguito correttamente")

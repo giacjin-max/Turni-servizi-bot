@@ -2,7 +2,6 @@ import os
 import json
 import pandas as pd
 import requests
-from collections import defaultdict
 
 # =====================
 # CONFIG
@@ -13,6 +12,7 @@ CHAT_ID = os.environ["CHAT_ID"]
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 DB_FILE = "responses.json"
+REMINDER_LOG_FILE = "reminder_log.json"
 
 # =====================
 # LOAD RISPOSTE
@@ -23,51 +23,48 @@ else:
     responses = {}
 
 # =====================
-# EXCEL (dd/mm/yyyy)
+# LOAD REMINDER LOG (ANTI-SPAM)
+# =====================
+if os.path.exists(REMINDER_LOG_FILE):
+    reminder_log = json.load(open(REMINDER_LOG_FILE))
+else:
+    reminder_log = {}
+
+# =====================
+# EXCEL
 # =====================
 df = pd.read_excel("turni.xlsx")
-
-# ✔ IMPORTANTE: formato europeo
-df["Data"] = pd.to_datetime(df["Data"], dayfirst=True)
-
-# =====================
-# PROSSIMO TURNO
-# =====================
-future = df[df["Data"] >= pd.Timestamp.now().normalize()]
-
-if future.empty:
-    print("Nessun turno trovato")
-    exit()
-
-riga = future.sort_values("Data").iloc[0]
-
-date = riga["Data"].strftime("%Y-%m-%d")
-
-done = responses.get(date, {})
+df = df[df["Data"].notna()].copy()
+df["Data"] = pd.to_datetime(df["Data"])
 
 # =====================
-# MAPPA NOME → USERNAME (col A/B)
+# USERS MAP (Nome → @username)
 # =====================
 users = {}
 
 for _, row in df.iterrows():
-
-    nome = str(row.iloc[0]).strip()
-    username = row.iloc[1]
+    nome = str(row["Nome"]).strip()
+    username = row.get("Username Telegram")
 
     if pd.notna(username):
         username = str(username).strip()
-
         if not username.startswith("@"):
             username = "@" + username
 
         users[nome] = username
 
-def display_name(nome):
-    return users.get(nome, nome)
+# =====================
+# PROSSIMO TURNO
+# =====================
+riga = df.sort_values("Data").iloc[0]
+date = riga["Data"].strftime("%Y-%m-%d")
+
+# init log data
+if date not in reminder_log:
+    reminder_log[date] = {}
 
 # =====================
-# SERVIZI
+# NOMI SERVIZI
 # =====================
 servizi = [
     "Parola","Adorazione","Coro","BimbiGiovani","Piano","Bass",
@@ -75,53 +72,35 @@ servizi = [
     "Traduzione","Ronda"
 ]
 
-# =====================
-# MAPPA PERSONA → SERVIZI
-# =====================
-people_to_services = defaultdict(set)
+names = []
 
 for s in servizi:
+    if s in riga and pd.notna(riga[s]):
+        names += str(riga[s]).replace(";", ",").split(",")
 
-    if s not in riga:
-        continue
-
-    valore = riga[s]
-
-    # ❌ salta vuoti
-    if pd.isna(valore):
-        continue
-
-    valore = str(valore).strip()
-
-    if valore == "":
-        continue
-
-    nomi = valore.replace(";", ",").split(",")
-
-    for n in nomi:
-
-        n = n.strip()
-
-        if not n:
-            continue
-
-        people_to_services[n].add(s)
+names = [n.strip() for n in names]
 
 # =====================
-# TROVA MANCANTI
+# RISPOSTE GIA FATTE
+# =====================
+done = responses.get(date, {})
+
+# =====================
+# TROVA MANCANTI (NO DUPLICATI REMINDER)
 # =====================
 missing = []
 
-for person in people_to_services.keys():
+for n in names:
+    tag = users.get(n, n)
 
-    if person not in done:
-        missing.append(person)
+    if n not in done and not reminder_log[date].get(tag):
+        missing.append(n)
 
 # =====================
 # STOP SE TUTTI HANNO RISPOSTO
 # =====================
 if not missing:
-    print("Tutti hanno risposto 👍")
+    print("Tutti hanno già risposto 👍")
     exit()
 
 # =====================
@@ -129,14 +108,9 @@ if not missing:
 # =====================
 msg = "⏳ Reminder: non hanno ancora risposto al turno\n\n"
 
-for person in missing:
-
-    services = list(people_to_services[person])
-
-    if not services:
-        continue
-
-    msg += f"• {display_name(person)} ({', '.join(services)})\n"
+for n in missing:
+    tag = users.get(n, n)
+    msg += f"{tag} ({n})\n"
 
 # =====================
 # INVIO TELEGRAM
@@ -146,4 +120,14 @@ requests.post(url, data={
     "text": msg
 })
 
-print("Reminder inviato correttamente")
+# =====================
+# SALVA ANTI-SPAM
+# =====================
+for n in missing:
+    tag = users.get(n, n)
+    reminder_log[date][tag] = True
+
+with open(REMINDER_LOG_FILE, "w") as f:
+    json.dump(reminder_log, f, indent=2)
+
+print("Reminder inviato e salvato")

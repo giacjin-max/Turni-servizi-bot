@@ -14,11 +14,10 @@ URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 RUBRICA_FILE = "rubrica.json"
 EXPECTED_FILE = "expected_users.json"
-RESPONSES_FILE = "responses.json"
 
 
 # =====================
-# LOAD RUBRICA
+# RUBRICA
 # =====================
 def load_rubrica():
     try:
@@ -31,9 +30,9 @@ def load_rubrica():
 rubrica = load_rubrica()
 
 
-def to_tag(nome):
-    nome = str(nome).strip()
-    return rubrica.get(nome, nome)
+def to_tag(name):
+    name = str(name).strip()
+    return rubrica.get(name, name)
 
 
 # =====================
@@ -64,85 +63,39 @@ date = riga["Data"].strftime("%Y-%m-%d")
 
 
 # =====================
-# BUILD USERS ATTESI
+# COSTRUISCI UTENTI ATTESI
 # =====================
-users = set()
-
-for _, row in df.iterrows():
-
-    nome = str(row["Nome"]).strip()
-
-    username = row.get("Username Telegram")
-
-    if pd.notna(username):
-
-        username = str(username).strip()
-
-        if not username.startswith("@"):
-            username = "@" + username
-
-        users.add(username.lower())
-
-
-# salva chi deve rispondere
-save_expected(date, list(users))
+expected_users = set()
 
 
 # =====================
-# BUILD MESSAGGIO
+# MESSAGGIO
 # =====================
 msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
-
 msg += "👉 Rispondi ai turni cliccando i pulsanti\n\n"
 
 
 # =====================
-# SERVIZI
+# RUOLI (COLONNE EXCEL)
 # =====================
-servizi = [
-    "Parola","Adorazione","Coro","BimbiGiovani","Piano","Bass",
-    "Chitarra","Mix","PC","Porta","Pulizia","Pulizia sala bimbi",
-    "Traduzione","Ronda",
-]
+for col in df.columns:
 
-emoji = {
-    "Parola": "📖",
-    "Adorazione": "🙌🏻",
-    "Coro": "🎤",
-    "BimbiGiovani": "👦🏻",
-    "Piano": "🎹",
-    "Bass": "🎸",
-    "Chitarra": "🎸",
-    "Mix": "🎧",
-    "PC": "💻",
-    "Porta": "🚪",
-    "Pulizia": "🧹",
-    "Pulizia sala bimbi": "🧹",
-    "Traduzione": "🗣️",
-    "Ronda": "🛡️",
-}
-
-
-# =====================
-# MESSAGGIO TURNI
-# =====================
-for servizio in servizi:
-
-    if servizio not in riga:
+    if col == "Data":
         continue
 
-    valore = riga[servizio]
+    value = riga[col]
 
-    if pd.isna(valore):
+    if pd.isna(value):
         continue
 
-    nomi = str(valore).replace(";", ",").split(",")
+    nomi = str(value).replace(";", ",").split(",")
 
-    msg += f"{emoji.get(servizio,'•')} {servizio}\n"
+    msg += f"• {col}\n"
 
     for nome in nomi:
 
         nome = nome.strip()
+
         if not nome:
             continue
 
@@ -150,7 +103,16 @@ for servizio in servizi:
 
         msg += f"   ⏳ {tag}\n"
 
+        # salva per reminder / tracking
+        expected_users.add(tag.replace("@", "").lower())
+
     msg += "\n"
+
+
+# =====================
+# SALVA EXPECTED USERS
+# =====================
+save_expected(date, list(expected_users))
 
 
 # =====================
@@ -167,7 +129,7 @@ keyboard = {
 
 
 # =====================
-# INVIO
+# INVIO TELEGRAM
 # =====================
 res = requests.post(
     URL,
@@ -179,6 +141,6 @@ res = requests.post(
 )
 
 print("STATUS:", res.status_code)
-print("TURNI INVIATI")
 print("DATA:", date)
-print("UTENTI ATTESI:", len(users))
+print("TURNI INVIATI")
+print("UTENTI ATTESI:", len(expected_users))

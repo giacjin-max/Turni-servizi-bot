@@ -124,9 +124,15 @@ if not missing:
 # =====================
 msg = "⏳ Reminder: non hanno ancora risposto al turno\n\n"
 
-for n in missing:
-    tag = users.get(n, n)
-    msg += f"{tag} ({n})\n"
+missing = {}
+
+for nome, lista_servizi in persone_servizi.items():
+
+    tag = users.get(nome, nome)
+
+    if nome not in done and not reminder_log[date].get(tag):
+
+        missing[nome] = lista_servizi
 
 # =====================
 # INVIO TELEGRAM

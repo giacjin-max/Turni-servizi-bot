@@ -3,35 +3,51 @@ import json
 import requests
 from datetime import datetime
 
+# =====================
+# CONFIG
+# =====================
 BOT_TOKEN = os.environ["BOT_TOKEN"]
-url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+
+get_url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
 
 DB_FILE = "responses.json"
 OFFSET_FILE = "offset.json"
 
-# LOAD DB
+# =====================
+# LOAD DATABASE RISPOSTE
+# =====================
 if os.path.exists(DB_FILE):
     db = json.load(open(DB_FILE))
 else:
     db = {}
 
-# LOAD OFFSET
+# =====================
+# LOAD OFFSET (EVITA DUPLICATI UPDATE)
+# =====================
 if os.path.exists(OFFSET_FILE):
-    last_update = json.load(open(OFFSET_FILE))["offset"]
+    last_offset = json.load(open(OFFSET_FILE))["offset"]
 else:
-    last_update = 0
+    last_offset = 0
 
-resp = requests.get(url).json()
+# =====================
+# FETCH UPDATES
+# =====================
+resp = requests.get(get_url).json()
 updates = resp.get("result", [])
 
-max_update = last_update
+max_offset = last_offset
 
+# =====================
+# LOOP UPDATES
+# =====================
 for u in updates:
 
-    if u["update_id"] <= last_update:
+    update_id = u["update_id"]
+
+    if update_id <= last_offset:
         continue
 
-    max_update = max(max_update, u["update_id"])
+    max_offset = max(max_offset, update_id)
 
     if "callback_query" not in u:
         continue
@@ -39,21 +55,48 @@ for u in updates:
     cq = u["callback_query"]
 
     user = cq["from"]["first_name"]
-    data = cq["data"]
+    user_id = cq["from"]["id"]
 
-    action, date = data.split("|")
-    action = "ok" if action == "ok" else "no"
+    data = cq["data"]  # es: ok|2026-01-20
 
+    # =====================
+    # PARSING CALLBACK
+    # =====================
+    try:
+        action, date = data.split("|")
+    except:
+        continue
+
+    if action == "ok":
+        status = "ok"
+    else:
+        status = "no"
+
+    # =====================
+    # INIT DATE IN DB
+    # =====================
     if date not in db:
         db[date] = {}
 
-    if user in db[date]:
-        continue
-
+    # =====================
+    # SALVA RISPOSTA
+    # =====================
     db[date][user] = {
-        "status": action,
-        "time": datetime.now().isoformat()
+        "status": status,
+        "time": datetime.now().isoformat(),
+        "user_id": user_id
     }
 
-json.dump(db, open(DB_FILE, "w"), indent=2)
-json.dump({"offset": max_update}, open(OFFSET_FILE, "w"), indent=2)
+# =====================
+# SAVE DB RISPOSTE
+# =====================
+with open(DB_FILE, "w") as f:
+    json.dump(db, f, indent=2)
+
+# =====================
+# SAVE OFFSET
+# =====================
+with open(OFFSET_FILE, "w") as f:
+    json.dump({"offset": max_offset}, f, indent=2)
+
+print("Receiver aggiornato")

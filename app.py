@@ -8,10 +8,11 @@ app = Flask(__name__)
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 DB_FILE = "responses.json"
+RUBRICA_FILE = "rubrica.json"
 
 
 # =====================
-# DB
+# LOAD DB
 # =====================
 def load_db():
     try:
@@ -27,16 +28,35 @@ def save_db(db):
 
 
 # =====================
-# ESTRAI UTENTI DAL MESSAGGIO TURNI
+# RUBRICA
+# =====================
+def load_rubrica():
+    try:
+        with open(RUBRICA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
+
+
+rubrica = load_rubrica()
+
+
+def to_tag(name):
+    name = str(name).strip()
+    return rubrica.get(name, name)
+
+
+# =====================
+# ESTRAI UTENTI DAL MESSAGGIO
 # =====================
 def extract_expected_users(text):
     users = set()
 
     for line in text.split("\n"):
         if "@" in line:
-            for word in line.split():
-                if word.startswith("@"):
-                    users.add(word.strip())
+            for w in line.split():
+                if w.startswith("@"):
+                    users.add(w.replace("@", "").strip())
 
     return users
 
@@ -60,10 +80,8 @@ def webhook():
     chat_id = cb["message"]["chat"]["id"]
     msg_id = cb["message"]["message_id"]
 
-    username = (
-        cb["from"].get("username")
-        or str(cb["from"]["id"])
-    )
+    username = cb["from"].get("username") or str(cb["from"]["id"])
+    username = "@" + username.lower() if not username.startswith("@") else username.lower()
 
     action, date = cb["data"].split("|")
 
@@ -92,24 +110,29 @@ def webhook():
     save_db(db)
 
     # =====================
-    # UTENTI ATTESI (DA MESSAGGIO)
+    # UTENTI ATTESI (DAL MESSAGGIO TURNI)
     # =====================
     expected_users = extract_expected_users(cb["message"]["text"])
+    expected_users = set(expected_users)
+
     responded_users = set(db[date].keys())
 
     remaining = len(expected_users - responded_users)
 
     # =====================
-    # LISTA RISPOSTE
+    # RISPOSTE
     # =====================
     ok_users = []
     no_users = []
 
     for user, status in db[date].items():
+
+        tag = to_tag(user)
+
         if status == "ok":
-            ok_users.append("@" + user)
+            ok_users.append(tag)
         else:
-            no_users.append("@" + user)
+            no_users.append(tag)
 
     status_text = "\n\n📋 RISPOSTE\n\n"
 
@@ -128,20 +151,14 @@ def webhook():
         keyboard = {
             "inline_keyboard": [
                 [
-                    {
-                        "text": "✅ OK",
-                        "callback_data": f"ok|{date}"
-                    },
-                    {
-                        "text": "❌ NON POSSO",
-                        "callback_data": f"no|{date}"
-                    }
+                    {"text": "✅ OK", "callback_data": f"ok|{date}"},
+                    {"text": "❌ NON POSSO", "callback_data": f"no|{date}"}
                 ]
             ]
         }
 
     # =====================
-    # AGGIORNA MESSAGGIO
+    # UPDATE MESSAGGIO
     # =====================
     original = cb["message"]["text"]
 

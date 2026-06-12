@@ -3,9 +3,7 @@ name: Turni Telegram Bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 * * * *"     # sender + reminder ogni ora
-    - cron: "*/5 * * * *"   # receiver ogni 5 minuti
-
+  - cron: "0 18 * * 4"   # giovedì sera SOLO reminder/sender
 jobs:
   run:
     runs-on: ubuntu-latest

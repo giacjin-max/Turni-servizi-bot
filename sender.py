@@ -13,112 +13,84 @@ CHAT_ID = os.environ["CHAT_ID"]
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 # =====================
-# CARICA EXCEL
+# ORARIO LOGICA
+# =====================
+now = datetime.now()
+weekday = now.weekday()
+hour = now.hour
+
+send = False
+prefix = ""
+
+# LUNEDÌ SERA
+if weekday == 0 and hour >= 18:
+    send = True
+    prefix = "📌 Turni settimana"
+
+# SABATO MATTINA
+elif weekday == 5 and hour < 12:
+    send = True
+    prefix = "📅 Reminder weekend"
+
+if not send:
+    print("⛔ Fuori orario invio")
+    exit()
+
+# =====================
+# ANTI-DOPPIONE INVIO
+# =====================
+LOG_FILE = "sent_log.json"
+
+if os.path.exists(LOG_FILE):
+    sent_log = json.load(open(LOG_FILE))
+else:
+    sent_log = {}
+
+today_key = now.strftime("%Y-%m-%d")
+
+if sent_log.get(today_key):
+    print("⛔ Già inviato oggi")
+    exit()
+
+# =====================
+# EXCEL
 # =====================
 df = pd.read_excel("turni.xlsx")
+df = df[df["Data"].notna()].copy()
+df["Data"] = pd.to_datetime(df["Data"])
 
-# Dizionario Nome -> Username Telegram
-users = {}
-
-for _, row in df.iterrows():
-    nome = str(row["Nome"]).strip()
-    username = row.get("Username Telegram")
-
-    if pd.notna(username):
-        users[nome] = str(username).strip()
-
-# =====================
-# TROVA PROSSIMO TURNO
-# =====================
-oggi = pd.Timestamp.now().normalize()
-
-turni = df[df["Data"].notna()].copy()
-turni["Data"] = pd.to_datetime(turni["Data"])
-
-future = turni[turni["Data"] >= oggi]
+future = df[df["Data"] >= pd.Timestamp.now().normalize()]
 
 if future.empty:
-    raise Exception("Nessun turno futuro trovato")
+    print("Nessun turno")
+    exit()
 
 riga = future.sort_values("Data").iloc[0]
-
-data_turno = riga["Data"]
+data_turno = riga["Data"].strftime("%Y-%m-%d")
 
 # =====================
-# SERVIZI
+# MESSAGGIO
 # =====================
+msg = f"{prefix}\n\n📅 Turni Domenica {riga['Data'].strftime('%d/%m/%Y')}\n\n"
+
 servizi = [
-    "Parola",
-    "Adorazione",
-    "Coro",
-    "BimbiGiovani",
-    "Piano",
-    "Bass",
-    "Chitarra",
-    "Mix",
-    "PC",
-    "Porta",
-    "Pulizia",
-    "Pulizia sala bimbi",
-    "Traduzione",
-    "Ronda",
+    "Parola","Adorazione","Coro","BimbiGiovani","Piano","Bass",
+    "Chitarra","Mix","PC","Porta","Pulizia","Pulizia sala bimbi",
+    "Traduzione","Ronda"
 ]
 
-emoji = {
-    "Parola": "📖",
-    "Adorazione": "🙌🏻",
-    "Coro": "🎤",
-    "BimbiGiovani": "👦🏻",
-    "Piano": "🎹",
-    "Bass": "🎸",
-    "Chitarra": "🎸",
-    "Mix": "🎧",
-    "PC": "💻",
-    "Porta": "🚪",
-    "Pulizia": "🧹",
-    "Pulizia sala bimbi": "🧹",
-    "Traduzione": "🗣️",
-    "Ronda": "🛡",
-}
+for s in servizi:
+    if s in riga and pd.notna(riga[s]):
+        msg += f"• {s}: {riga[s]}\n"
 
 # =====================
-# COSTRUZIONE MESSAGGIO
-# =====================
-msg = f"📅 Turni Domenica {data_turno.strftime('%d/%m/%Y')}\n\n"
-
-for servizio in servizi:
-    valore = riga.get(servizio)
-
-    if pd.isna(valore):
-        continue
-
-    nomi = [x.strip() for x in str(valore).replace(";", ",").split(",")]
-
-    utenti = []
-    for nome in nomi:
-        if nome in users:
-            utenti.append(f"@{users[nome]}")
-        else:
-            utenti.append(nome)
-
-    msg += f"{emoji.get(servizio,'•')} {servizio}\n"
-    msg += "\n".join(utenti)
-    msg += "\n\n"
-
-# =====================
-# BOTTONI TELEGRAM
+# BOTTONI
 # =====================
 keyboard = {
     "inline_keyboard": [
         [
-            {
-                "text": "✅ OK",
-                "callback_data": f"ok|{data_turno.strftime('%Y-%m-%d')}"
-            },
-            {
-                "text": "❌ NON POSSO",
-                "callback_data": f"no|{data_turno.strftime('%Y-%m-%d')}"
-            }
+            {"text": "✅ OK", "callback_data": f"ok|{data_turno}"},
+            {"text": "❌ NON POSSO", "callback_data": f"no|{data_turno}"}
         ]
     ]
 }
@@ -132,9 +104,11 @@ response = requests.post(url, data={
     "reply_markup": json.dumps(keyboard)
 })
 
+print(response.text)
+
 # =====================
-# DEBUG
+# SALVA LOG
 # =====================
-print("STATUS:", response.status_code)
-print("RISPOSTA:", response.text)
-print("\nMESSAGGIO:\n", msg)
+if response.status_code == 200:
+    sent_log[today_key] = True
+    json.dump(sent_log, open(LOG_FILE, "w"), indent=2)

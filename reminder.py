@@ -72,13 +72,29 @@ servizi = [
     "Traduzione","Ronda"
 ]
 
-names = []
+persone_servizi = {}
 
-for s in servizi:
-    if s in riga and pd.notna(riga[s]):
-        names += str(riga[s]).replace(";", ",").split(",")
+for servizio in servizi:
 
-names = [n.strip() for n in names]
+    if servizio not in riga:
+        continue
+
+    if pd.isna(riga[servizio]):
+        continue
+
+    persone = str(riga[servizio]).replace(";", ",")
+
+    for nome in persone.split(","):
+
+        nome = nome.strip()
+
+        if not nome:
+            continue
+
+        if nome not in persone_servizi:
+            persone_servizi[nome] = []
+
+        persone_servizi[nome].append(servizio)
 
 # =====================
 # RISPOSTE GIA FATTE

@@ -101,6 +101,7 @@ response = requests.post(
     },
 )
 
-print("CHAT_ID =", CHAT_ID)
-print(response.status_code)
-print(response.text)
+print("CHAT_ID:", CHAT_ID)
+print("STATUS:", response.status_code)
+print("RISPOSTA:", response.text)
+print(msg)

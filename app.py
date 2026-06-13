@@ -9,6 +9,7 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 DB_FILE = "responses.json"
 EXPECTED_FILE = "expected_users.json"
+RUBRICA_FILE = "rubrica.json"
 
 # =====================
 # LOAD DB
@@ -21,8 +22,12 @@ def load_db():
         return {}
 
 def save_db(db):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(db, f, indent=2, ensure_ascii=False)
+    try:
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(db, f, indent=2, ensure_ascii=False)
+        print("💾 DB SALVATO:", db, flush=True)
+    except Exception as e:
+        print("❌ ERRORE SALVATAGGIO DB:", e, flush=True)
 
 # =====================
 # LOAD EXPECTED
@@ -36,13 +41,29 @@ def load_expected(date):
         return set()
 
 # =====================
+# RUBRICA
+# =====================
+def load_rubrica():
+    try:
+        with open(RUBRICA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
+
+rubrica = load_rubrica()
+
+def to_tag(name):
+    name = str(name).strip()
+    return rubrica.get(name, name)
+
+# =====================
 # WEBHOOK
 # =====================
 @app.route("/", methods=["POST"])
 def webhook():
 
     data = request.get_json(silent=True)
-    print("UPDATE:", json.dumps(data, ensure_ascii=False), flush=True)
+    print("📩 UPDATE:", json.dumps(data, ensure_ascii=False), flush=True)
 
     if not data or "callback_query" not in data:
         return "ok", 200
@@ -53,9 +74,12 @@ def webhook():
     chat_id = cb["message"]["chat"]["id"]
     msg_id = cb["message"]["message_id"]
 
+    # =====================
+    # USERNAME NORMALIZZATO (FONDAMENTALE)
+    # =====================
     username = cb["from"].get("username")
     if username:
-        username = "@" + username.lower()
+        username = "@" + username.lower().strip().replace("@", "")
     else:
         username = "@" + str(cb["from"]["id"])
 
@@ -65,6 +89,13 @@ def webhook():
 
     if date not in db:
         db[date] = {}
+
+    # =====================
+    # DEBUG INPUT
+    # =====================
+    print("📅 DATE:", date, flush=True)
+    print("👤 USER:", username, flush=True)
+    print("⚡ ACTION:", action, flush=True)
 
     # =====================
     # BLOCCO DOPPIO CLICK
@@ -94,6 +125,10 @@ def webhook():
     missing = expected_users - responded_users
     remaining = len(missing)
 
+    print("📌 EXPECTED:", expected_users, flush=True)
+    print("📌 RESPONDED:", responded_users, flush=True)
+    print("📌 MISSING:", missing, flush=True)
+
     # =====================
     # RISPOSTE
     # =====================
@@ -120,7 +155,7 @@ def webhook():
         }
 
     # =====================
-    # UPDATE MESSAGE
+    # UPDATE MESSAGGIO
     # =====================
     original = cb["message"]["text"]
 
@@ -138,7 +173,7 @@ def webhook():
     )
 
     # =====================
-    # CALLBACK ANSWER
+    # POPUP TELEGRAM
     # =====================
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",

@@ -1,30 +1,15 @@
 import os
 import json
 import pandas as pd
-import sqlite3
 import requests
+import re
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 
-DB_NAME = "bot.db"
 RUBRICA_FILE = "rubrica.json"
 
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-
-# =====================
-# DB INIT EXPECTED
-# =====================
-def save_expected(date, users):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-
-    for u in users:
-        c.execute("INSERT OR IGNORE INTO expected VALUES (?, ?)", (date, u))
-
-    conn.commit()
-    conn.close()
 
 
 # =====================
@@ -54,10 +39,13 @@ df["Data"] = pd.to_datetime(df["Data"])
 riga = df.sort_values("Data").iloc[0]
 date = riga["Data"].strftime("%Y-%m-%d")
 
-expected_users = set()
 
+# =====================
+# COSTRUZIONE MESSAGGIO
+# =====================
 msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
 msg += "👉 Rispondi ai turni cliccando i pulsanti\n\n"
+
 
 for col in df.columns:
     if col == "Data":
@@ -80,19 +68,11 @@ for col in df.columns:
         tag = to_tag(nome)
         msg += f"    {tag}\n"
 
-        expected_users.add(tag.replace("@", "").lower())
-
     msg += "\n"
 
 
 # =====================
-# SAVE EXPECTED SQLITE
-# =====================
-save_expected(date, expected_users)
-
-
-# =====================
-# BUTTONS
+# BOTTONI
 # =====================
 keyboard = {
     "inline_keyboard": [[
@@ -103,7 +83,7 @@ keyboard = {
 
 
 # =====================
-# SEND
+# INVIO TELEGRAM
 # =====================
 res = requests.post(
     url,

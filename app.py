@@ -131,9 +131,9 @@ print("EXPECTED:", expected_users)
 print("RESPONDED:", responded_users)
 print("MISSING:", expected_users - responded_users)
 
-    # =====================
-    # RISPOSTE
-    # =====================
+# =====================
+# RISPOSTE
+# =====================
 ok_users = []
 no_users = []
 

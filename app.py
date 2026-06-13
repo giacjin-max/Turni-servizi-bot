@@ -26,7 +26,32 @@ reverse_rubrica = {
 
 def get_service_name(telegram_user):
     user = telegram_user.lower().replace("@", "")
-    return reverse_rubrica.get(user, user)
+    return reverse_rubrica.get(user)
+
+# =====================
+# SERVIZI DEL GIORNO
+# =====================
+def get_services_for_date(riga):
+
+    services = []
+
+    for col in riga.index:
+        if col == "Data":
+            continue
+
+        value = riga[col]
+
+        if pd.isna(value):
+            continue
+
+        nomi = str(value).replace(";", ",").split(",")
+
+        for nome in nomi:
+            nome = nome.strip()
+            if nome:
+                services.append(nome)
+
+    return services
 
 # =====================
 # SUPABASE SAVE
@@ -40,16 +65,14 @@ def save_response(date, service_name):
     }, on_conflict="date,username").execute()
 
 # =====================
-# GET RESPONSES
+# READ RESPONSES
 # =====================
 def get_responses(date):
 
-    res = supabase.table("responses") \
+    return supabase.table("responses") \
         .select("*") \
         .eq("date", date) \
-        .execute()
-
-    return res.data
+        .execute().data
 
 # =====================
 # BUILD MESSAGE (Excel base + Supabase overlay)
@@ -77,7 +100,7 @@ def build_message(riga, status_map):
                 continue
 
             if nome in status_map:
-                msg += f"    {nome} → OK\n"
+                msg += f"    {nome} 🟢 OK\n"
             else:
                 msg += f"    {nome}\n"
 
@@ -104,14 +127,9 @@ def webhook():
     telegram_user = cb["from"].get("username") or str(cb["from"]["id"])
     date = cb["data"].split("|")[1]
 
-    service_name = get_service_name(telegram_user)
-
-    print("CLICK:", telegram_user, "→", service_name, date, flush=True)
-
-    # salva risposta
-    save_response(date, service_name)
-
-    # leggi excel (base struttura)
+    # =====================
+    # EXCEL LOAD
+    # =====================
     df = pd.read_excel("turni.xlsx")
     df = df[df["Data"].notna()].copy()
     df["Data"] = pd.to_datetime(df["Data"])
@@ -119,7 +137,48 @@ def webhook():
 
     riga = df.iloc[0]
 
-    # leggi supabase
+    # =====================
+    # MAP TELEGRAM → SERVIZIO
+    # =====================
+    service_name = get_service_name(telegram_user)
+
+    if not service_name:
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+            data={
+                "callback_query_id": cb["id"],
+                "text": "Non sei assegnato a nessun servizio ❌",
+                "show_alert": True
+            }
+        )
+        return "ok", 200
+
+    # =====================
+    # BLOCCO SE NON IN TURNO
+    # =====================
+    services_today = get_services_for_date(riga)
+
+    if service_name not in services_today:
+
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+            data={
+                "callback_query_id": cb["id"],
+                "text": "Non sei in servizio oggi ❌",
+                "show_alert": True
+            }
+        )
+
+        return "ok", 200
+
+    # =====================
+    # SAVE RESPONSE
+    # =====================
+    save_response(date, service_name)
+
+    # =====================
+    # READ + BUILD
+    # =====================
     responses = get_responses(date)
 
     status_map = {
@@ -127,10 +186,11 @@ def webhook():
         for r in responses
     }
 
-    # costruisci messaggio
     new_text = build_message(riga, status_map)
 
-    # aggiorna telegram
+    # =====================
+    # EDIT MESSAGE
+    # =====================
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
         json={
@@ -140,12 +200,14 @@ def webhook():
         }
     )
 
-    # risposta click
+    # =====================
+    # CALLBACK OK
+    # =====================
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
         data={
             "callback_query_id": cb["id"],
-            "text": "OK registrato ✔"
+            "text": "OK registrato 🟢"
         }
     )
 

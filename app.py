@@ -96,7 +96,7 @@ def webhook():
     # =====================
     # CALCOLO STATI
     # =====================
-    responses = db[date]
+    responses = get_responses(date)
 
     ok_users = [to_name(u) for u, s in responses.items() if s == "ok"]
     no_users = [to_name(u) for u, s in responses.items() if s != "ok"]
@@ -108,7 +108,7 @@ def webhook():
     try:
         with open(expected_file, "r", encoding="utf-8") as f:
             expected = json.load(f)
-        expected_users = set(expected.get(date, []))
+        expected_users = get_expected(date)
     except:
         expected_users = set()
 

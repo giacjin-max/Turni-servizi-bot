@@ -109,7 +109,19 @@ def webhook():
     # SALVA RISPOSTA
     # =====================
     db[date][username] = action
-    save_db(db)
+save_db(db)
+
+print("USER:", username, flush=True)
+print("DATE:", date, flush=True)
+print("ACTION:", action, flush=True)
+
+print("💾 PATH FILE:", os.path.abspath(DB_FILE), flush=True)
+
+try:
+    with open(DB_FILE, "r", encoding="utf-8") as f:
+        print("📖 LETTURA IMMEDIATA FILE:", f.read(), flush=True)
+except Exception as e:
+    print("ERRORE LETTURA FILE:", e, flush=True)
 
     # =====================
     # LOAD EXPECTED

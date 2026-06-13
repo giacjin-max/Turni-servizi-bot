@@ -109,7 +109,7 @@ def webhook():
     db[date][username] = action
     save_db(db)
 
-    # =====================
+# =====================
 # UTENTI ATTESI
 # =====================
 try:

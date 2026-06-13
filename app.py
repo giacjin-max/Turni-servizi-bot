@@ -9,9 +9,29 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 DB_FILE = "responses.json"
 EXPECTED_FILE = "expected_users.json"
+RUBRICA_FILE = "rubrica.json"
 
 # =====================
-# LOAD DB
+# RUBRICA
+# =====================
+def load_rubrica():
+    try:
+        with open(RUBRICA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
+
+rubrica = load_rubrica()
+
+def to_username(name):
+    """
+    prende nome Excel → username Telegram
+    """
+    name = str(name).strip()
+    return rubrica.get(name, None)
+
+# =====================
+# DB
 # =====================
 def load_db():
     try:
@@ -20,27 +40,12 @@ def load_db():
     except:
         return {}
 
-# =====================
-# SAVE DB + DEBUG FILE REALE
-# =====================
 def save_db(db):
-    try:
-        with open(DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(db, f, indent=2, ensure_ascii=False)
-
-        # 🔥 DEBUG IMPORTANTE
-        print("💾 PATH FILE:", os.path.abspath(DB_FILE), flush=True)
-
-        with open(DB_FILE, "r", encoding="utf-8") as f:
-            content = f.read()
-
-        print("📖 LETTURA IMMEDIATA FILE:", content, flush=True)
-
-    except Exception as e:
-        print("❌ ERRORE SAVE_DB:", e, flush=True)
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(db, f, indent=2, ensure_ascii=False)
 
 # =====================
-# EXPECTED USERS
+# EXPECTED
 # =====================
 def load_expected(date):
     try:
@@ -58,7 +63,7 @@ def webhook():
 
     data = request.get_json(silent=True)
 
-    print("📩 UPDATE:", json.dumps(data, ensure_ascii=False), flush=True)
+    print("UPDATE:", json.dumps(data, ensure_ascii=False), flush=True)
 
     if not data or "callback_query" not in data:
         return "ok", 200
@@ -69,60 +74,40 @@ def webhook():
     chat_id = cb["message"]["chat"]["id"]
     msg_id = cb["message"]["message_id"]
 
-    # =====================
-    # USER NORMALIZATION
-    # =====================
-    username = cb["from"].get("username")
-    if username:
-        username = "@" + username.lower().strip().replace("@", "")
-    else:
-        username = "@" + str(cb["from"]["id"])
+    # username reale Telegram
+    tg_username = cb["from"].get("username")
+    if not tg_username:
+        tg_username = str(cb["from"]["id"])
+    tg_username = "@" + tg_username.lower()
 
     action, date = cb["data"].split("|")
 
     db = load_db()
-
     if date not in db:
         db[date] = {}
 
-    print("👤 USER:", username, flush=True)
-    print("📅 DATE:", date, flush=True)
-    print("⚡ ACTION:", action, flush=True)
-
     # =====================
-    # DOUBLE CLICK BLOCK
+    # SALVA RISPOSTA (USERNAME TELEGRAM DIRETTO)
     # =====================
-    if username in db[date]:
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-            data={
-                "callback_query_id": cb_id,
-                "text": "Hai già risposto 👍"
-            }
-        )
-        return "ok", 200
-
-    # =====================
-    # SAVE RESPONSE
-    # =====================
-    db[date][username] = action
+    db[date][tg_username] = action
     save_db(db)
 
     # =====================
-    # EXPECTED USERS
+    # EXPECTED USERS (GIÀ TELEGRAM USERNAME)
     # =====================
     expected_users = load_expected(date)
 
     responded_users = set(db[date].keys())
     missing = expected_users - responded_users
+
     remaining = len(missing)
 
-    print("📌 EXPECTED:", expected_users, flush=True)
-    print("📌 RESPONDED:", responded_users, flush=True)
-    print("📌 MISSING:", missing, flush=True)
+    print("EXPECTED:", expected_users, flush=True)
+    print("RESPONDED:", responded_users, flush=True)
+    print("MISSING:", missing, flush=True)
 
     # =====================
-    # STATUS MESSAGE
+    # RISPOSTE
     # =====================
     ok_users = [u for u, s in db[date].items() if s == "ok"]
     no_users = [u for u, s in db[date].items() if s != "ok"]
@@ -133,7 +118,7 @@ def webhook():
     status_text += f"\n\n⏳ Mancano {remaining} risposte"
 
     # =====================
-    # BUTTONS
+    # BOTTONI
     # =====================
     if remaining == 0:
         keyboard = {"inline_keyboard": []}
@@ -147,7 +132,7 @@ def webhook():
         }
 
     # =====================
-    # EDIT MESSAGE
+    # UPDATE MESSAGGIO
     # =====================
     original = cb["message"]["text"]
 
@@ -177,15 +162,11 @@ def webhook():
 
     return "ok", 200
 
-# =====================
-# HEALTH CHECK
-# =====================
+
 @app.route("/", methods=["GET"])
 def home():
     return "Webhook attivo", 200
 
-# =====================
-# RUN
-# =====================
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

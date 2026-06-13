@@ -9,7 +9,6 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 DB_FILE = "responses.json"
 EXPECTED_FILE = "expected_users.json"
-RUBRICA_FILE = "rubrica.json"
 
 # =====================
 # LOAD DB
@@ -21,15 +20,27 @@ def load_db():
     except:
         return {}
 
-
-def save_db(db):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(db, f, indent=2, ensure_ascii=False)
-
-    print("💾 SCRITTO SU FILE:", os.path.abspath(DB_FILE), flush=True)
-    print("📦 CONTENUTO:", db, flush=True)
 # =====================
-# LOAD EXPECTED
+# SAVE DB + DEBUG FILE REALE
+# =====================
+def save_db(db):
+    try:
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(db, f, indent=2, ensure_ascii=False)
+
+        # 🔥 DEBUG IMPORTANTE
+        print("💾 PATH FILE:", os.path.abspath(DB_FILE), flush=True)
+
+        with open(DB_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        print("📖 LETTURA IMMEDIATA FILE:", content, flush=True)
+
+    except Exception as e:
+        print("❌ ERRORE SAVE_DB:", e, flush=True)
+
+# =====================
+# EXPECTED USERS
 # =====================
 def load_expected(date):
     try:
@@ -40,28 +51,13 @@ def load_expected(date):
         return set()
 
 # =====================
-# RUBRICA
-# =====================
-def load_rubrica():
-    try:
-        with open(RUBRICA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
-
-rubrica = load_rubrica()
-
-def to_tag(name):
-    name = str(name).strip()
-    return rubrica.get(name, name)
-
-# =====================
 # WEBHOOK
 # =====================
 @app.route("/", methods=["POST"])
 def webhook():
 
     data = request.get_json(silent=True)
+
     print("📩 UPDATE:", json.dumps(data, ensure_ascii=False), flush=True)
 
     if not data or "callback_query" not in data:
@@ -72,13 +68,9 @@ def webhook():
     cb_id = cb["id"]
     chat_id = cb["message"]["chat"]["id"]
     msg_id = cb["message"]["message_id"]
-    print("PATH FILE:", os.path.abspath(DB_FILE), flush=True)
-
-with open(DB_FILE, "r", encoding="utf-8") as f:
-    print("📖 LETTURA IMMEDIATA:", f.read(), flush=True)
 
     # =====================
-    # USERNAME NORMALIZZATO (FONDAMENTALE)
+    # USER NORMALIZATION
     # =====================
     username = cb["from"].get("username")
     if username:
@@ -93,15 +85,12 @@ with open(DB_FILE, "r", encoding="utf-8") as f:
     if date not in db:
         db[date] = {}
 
-    # =====================
-    # DEBUG INPUT
-    # =====================
-    print("📅 DATE:", date, flush=True)
     print("👤 USER:", username, flush=True)
+    print("📅 DATE:", date, flush=True)
     print("⚡ ACTION:", action, flush=True)
 
     # =====================
-    # BLOCCO DOPPIO CLICK
+    # DOUBLE CLICK BLOCK
     # =====================
     if username in db[date]:
         requests.post(
@@ -114,7 +103,7 @@ with open(DB_FILE, "r", encoding="utf-8") as f:
         return "ok", 200
 
     # =====================
-    # SALVA RISPOSTA
+    # SAVE RESPONSE
     # =====================
     db[date][username] = action
     save_db(db)
@@ -133,7 +122,7 @@ with open(DB_FILE, "r", encoding="utf-8") as f:
     print("📌 MISSING:", missing, flush=True)
 
     # =====================
-    # RISPOSTE
+    # STATUS MESSAGE
     # =====================
     ok_users = [u for u, s in db[date].items() if s == "ok"]
     no_users = [u for u, s in db[date].items() if s != "ok"]
@@ -144,7 +133,7 @@ with open(DB_FILE, "r", encoding="utf-8") as f:
     status_text += f"\n\n⏳ Mancano {remaining} risposte"
 
     # =====================
-    # BOTTONI
+    # BUTTONS
     # =====================
     if remaining == 0:
         keyboard = {"inline_keyboard": []}
@@ -158,7 +147,7 @@ with open(DB_FILE, "r", encoding="utf-8") as f:
         }
 
     # =====================
-    # UPDATE MESSAGGIO
+    # EDIT MESSAGE
     # =====================
     original = cb["message"]["text"]
 
@@ -176,7 +165,7 @@ with open(DB_FILE, "r", encoding="utf-8") as f:
     )
 
     # =====================
-    # POPUP TELEGRAM
+    # POPUP
     # =====================
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",

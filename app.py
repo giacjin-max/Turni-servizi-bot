@@ -153,9 +153,9 @@ no_users = []
 
     status_text += f"\n\n⏳ Mancano {remaining} risposte"
 
-    # =====================
-    # CHIUSURA BOTTONI
-    # =====================
+# =====================
+# CHIUSURA BOTTONI
+# =====================
     if remaining == 0:
         keyboard = {"inline_keyboard": []}
         status_text += "\n\n🔒 Risposte chiuse"
@@ -169,9 +169,9 @@ no_users = []
             ]
         }
 
-    # =====================
-    # UPDATE MESSAGGIO
-    # =====================
+# =====================
+# UPDATE MESSAGGIO
+# =====================
     original = cb["message"]["text"]
 
     if "\n\n📋 RISPOSTE" in original:

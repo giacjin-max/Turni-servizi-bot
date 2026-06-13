@@ -104,7 +104,7 @@ for col in df.columns:
         msg += f"    {tag}\n"
 
         # salva per reminder / tracking
-        expected_users.add(tag.replace("@", "").lower())
+        expected_users.add(tag.lower())
 
     msg += "\n"
 

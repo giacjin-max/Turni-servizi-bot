@@ -1,41 +1,48 @@
-import json
-import os
+import sqlite3
 import requests
+import os
 
-# =====================
-# CONFIG
-# =====================
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 
-EXPECTED_FILE = "expected_users.json"
-RESPONSES_FILE = "responses.json"
+DB_NAME = "bot.db"
 
-URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-# =====================
-# LOAD
-# =====================
-def load_json(path):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
 
-expected_data = load_json(EXPECTED_FILE)
-responses_data = load_json(RESPONSES_FILE)
+def get_all_dates():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT date FROM expected")
+    rows = c.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
 
-# =====================
-# MAIN LOOP
-# =====================
-for date, expected_users in expected_data.items():
 
-    expected_users = set(expected_users)
-    responses = responses_data.get(date, {})
+def get_expected(date):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT user FROM expected WHERE date=?", (date,))
+    rows = c.fetchall()
+    conn.close()
+    return set(r[0] for r in rows)
 
-    responded_users = set(responses.keys())
-    missing = expected_users - responded_users
+
+def get_responses(date):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT user FROM responses WHERE date=?", (date,))
+    rows = c.fetchall()
+    conn.close()
+    return set(r[0] for r in rows)
+
+
+for date in get_all_dates():
+
+    expected = get_expected(date)
+    responses = get_responses(date)
+
+    missing = expected - responses
 
     if not missing:
         continue
@@ -46,15 +53,11 @@ for date, expected_users in expected_data.items():
     for u in missing:
         msg += f"• {u}\n"
 
-    msg += "\n⚠️ Rispondi usando i pulsanti nel messaggio turni"
+    msg += "\n⚠️ Rispondi ai turni dal messaggio principale"
 
-    requests.post(
-        URL,
-        data={
-            "chat_id": CHAT_ID,
-            "text": msg
-        }
-    )
+    requests.post(url, data={
+        "chat_id": CHAT_ID,
+        "text": msg
+    })
 
     print("REMINDER INVIATO:", date)
-    print("MANCANO:", len(missing))

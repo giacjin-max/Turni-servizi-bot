@@ -10,11 +10,11 @@ CHAT_ID = os.environ["CHAT_ID"]
 
 EXPECTED_FILE = "expected_users.json"
 RESPONSES_FILE = "responses.json"
-RUBRICA_FILE = "rubrica.json"
 
+URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 # =====================
-# LOAD FILES
+# LOAD
 # =====================
 def load_json(path):
     try:
@@ -23,32 +23,11 @@ def load_json(path):
     except:
         return {}
 
-
 expected_data = load_json(EXPECTED_FILE)
 responses_data = load_json(RESPONSES_FILE)
-rubrica = load_json(RUBRICA_FILE)
-
 
 # =====================
-# CONVERT NAME → TAG
-# =====================
-def to_tag(name):
-    return rubrica.get(name, name)
-
-
-# =====================
-# SEND MESSAGE
-# =====================
-def send_message(text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": text
-    })
-
-
-# =====================
-# MAIN LOGIC
+# MAIN LOOP
 # =====================
 for date, expected_users in expected_data.items():
 
@@ -56,25 +35,26 @@ for date, expected_users in expected_data.items():
     responses = responses_data.get(date, {})
 
     responded_users = set(responses.keys())
-    missing_users = expected_users - responded_users
+    missing = expected_users - responded_users
 
-    # se tutti hanno risposto → skip
-    if not missing_users:
+    if not missing:
         continue
 
-    # =====================
-    # COSTRUISCI MESSAGGIO
-    # =====================
     msg = f"⏰ REMINDER TURNI {date}\n\n"
+    msg += "👉 Mancano ancora risposte:\n\n"
 
-    msg += "👉 Mancano ancora le risposte:\n\n"
+    for u in missing:
+        msg += f"• {u}\n"
 
-    for user in missing_users:
-        msg += f"• {to_tag(user)}\n"
+    msg += "\n⚠️ Rispondi usando i pulsanti nel messaggio turni"
 
-    msg += "\n⚠️ Rispondi ai turni con i pulsanti nel messaggio"
-
-    send_message(msg)
+    requests.post(
+        URL,
+        data={
+            "chat_id": CHAT_ID,
+            "text": msg
+        }
+    )
 
     print("REMINDER INVIATO:", date)
-    print("MANCANO:", len(missing_users))
+    print("MANCANO:", len(missing))

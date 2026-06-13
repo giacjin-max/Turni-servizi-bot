@@ -72,6 +72,11 @@ def webhook():
     cb_id = cb["id"]
     chat_id = cb["message"]["chat"]["id"]
     msg_id = cb["message"]["message_id"]
+    
+    print("PATH FILE:", os.path.abspath(DB_FILE), flush=True)
+
+with open(DB_FILE, "r", encoding="utf-8") as f:
+    print("📖 LETTURA IMMEDIATA:", f.read(), flush=True)
 
     # =====================
     # USERNAME NORMALIZZATO (FONDAMENTALE)

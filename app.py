@@ -5,11 +5,11 @@ import requests
 
 app = Flask(name)
 
-BOT_TOKEN = os.environ[“BOT_TOKEN”]
+BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-DB_FILE = “responses.json”
-RUBRICA_FILE = “rubrica.json”
-EXPECTED_FILE = “expected_users.json”
+DB_FILE = "responses.json"
+RUBRICA_FILE = "rubrica.json"
+EXPECTED_FILE = "expected_users.json"
 
 =====================
 
@@ -19,13 +19,13 @@ LOAD DB
 
 def load_db():
 try:
-with open(DB_FILE, “r”, encoding=“utf-8”) as f:
+with open(DB_FILE, "r", encoding="utf-8") as f:
 return json.load(f)
 except:
 return {}
 
 def save_db(db):
-with open(DB_FILE, “w”, encoding=“utf-8”) as f:
+with open(DB_FILE, "w", encoding="utf-8") as f:
 json.dump(db, f, indent=2, ensure_ascii=False)
 
 =====================
@@ -36,7 +36,7 @@ RUBRICA
 
 def load_rubrica():
 try:
-with open(RUBRICA_FILE, “r”, encoding=“utf-8”) as f:
+with open(RUBRICA_FILE, "r", encoding="utf-8") as f:
 return json.load(f)
 except:
 return {}
@@ -49,7 +49,7 @@ WEBHOOK
 
 =====================
 
-@app.route(”/”, methods=[“POST”])
+@app.route("/", methods=["POST"])
 def webhook():
 
 data = request.get_json(silent=True)

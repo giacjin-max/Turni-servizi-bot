@@ -21,14 +21,13 @@ def load_db():
     except:
         return {}
 
-def save_db(db):
-    try:
-        with open(DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(db, f, indent=2, ensure_ascii=False)
-        print("💾 DB SALVATO:", db, flush=True)
-    except Exception as e:
-        print("❌ ERRORE SALVATAGGIO DB:", e, flush=True)
 
+def save_db(db):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(db, f, indent=2, ensure_ascii=False)
+
+    print("💾 SCRITTO SU FILE:", os.path.abspath(DB_FILE), flush=True)
+    print("📦 CONTENUTO:", db, flush=True)
 # =====================
 # LOAD EXPECTED
 # =====================

@@ -9,8 +9,14 @@ app = Flask(__name__)
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-DB_NAME = "bot.db"
+# 🔥 PERCORSO PERSISTENTE (FONDAMENTALE PER NON PERDERE DATI)
+DB_NAME = "/data/bot.db"
 RUBRICA_FILE = "rubrica.json"
+
+# =====================
+# DEBUG STARTUP
+# =====================
+print("📦 DB PATH:", os.path.abspath(DB_NAME), flush=True)
 
 # =====================
 # INIT DB
@@ -52,7 +58,7 @@ def to_name(user):
     return user
 
 # =====================
-# EXPECTED USERS DAL MESSAGGIO
+# UTENTI ATTESI DAL MESSAGGIO
 # =====================
 def extract_expected_users(text):
     return set(re.findall(r"@([a-zA-Z0-9_]+)", text.lower()))
@@ -102,7 +108,7 @@ def webhook():
     username = cb["from"].get("username")
 
     if username:
-        username = username.lower()
+        username = username.lower().replace("@", "").strip()
     else:
         username = str(cb["from"]["id"])
 
@@ -124,7 +130,7 @@ def webhook():
     missing = expected_users - responded_users
 
     # =====================
-    # COSTRUISCI LISTA
+    # LISTA RISPOSTE
     # =====================
     ok_users = [to_name(u) for u, s in responses.items() if s == "ok"]
     no_users = [to_name(u) for u, s in responses.items() if s != "ok"]
@@ -140,7 +146,7 @@ def webhook():
     status_text += f"\n\n⏳ Mancano {len(missing)} risposte"
 
     # =====================
-    # BOTTONI (CHIUSURA SOLO SE TUTTI HANNO RISPOSTO)
+    # CHIUSURA SOLO SE TUTTI HANNO RISPOSTO
     # =====================
     if len(missing) == 0 and len(expected_users) > 0:
         keyboard = {"inline_keyboard": []}
@@ -154,7 +160,7 @@ def webhook():
         }
 
     # =====================
-    # AGGIORNA MESSAGGIO
+    # UPDATE MESSAGGIO
     # =====================
     original = cb["message"]["text"]
 

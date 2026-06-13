@@ -2,39 +2,54 @@ from flask import Flask, request
 import os
 import json
 import requests
+import sqlite3
 
 app = Flask(__name__)
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-DB_FILE = "responses.json"
+DB_NAME = "bot.db"
 RUBRICA_FILE = "rubrica.json"
 
 # =====================
-# UTILS JSON
+# INIT DB
 # =====================
-def load_json(path):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
 
-def save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS responses (
+        date TEXT,
+        user TEXT,
+        status TEXT,
+        PRIMARY KEY (date, user)
+    )
+    """)
 
-# =====================
-# DB
-# =====================
-from db import init_db, save_response, get_responses, get_expected
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS expected (
+        date TEXT,
+        user TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
 
 init_db()
 
 # =====================
 # RUBRICA
 # =====================
-rubrica = load_json(RUBRICA_FILE)
+def load_rubrica():
+    try:
+        with open(RUBRICA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
+
+rubrica = load_rubrica()
 
 def to_name(username):
     username = str(username).lower().replace("@", "")
@@ -42,6 +57,40 @@ def to_name(username):
         if str(u).lower().replace("@", "") == username:
             return name
     return username
+
+# =====================
+# DB FUNCTIONS
+# =====================
+def save_response(date, user, status):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+
+    c.execute("""
+    INSERT OR REPLACE INTO responses VALUES (?, ?, ?)
+    """, (date, user, status))
+
+    conn.commit()
+    conn.close()
+
+def get_responses(date):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+
+    c.execute("SELECT user, status FROM responses WHERE date=?", (date,))
+    rows = c.fetchall()
+
+    conn.close()
+    return dict(rows)
+
+def get_expected(date):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+
+    c.execute("SELECT user FROM expected WHERE date=?", (date,))
+    rows = c.fetchall()
+
+    conn.close()
+    return set(r[0] for r in rows)
 
 # =====================
 # WEBHOOK
@@ -70,53 +119,20 @@ def webhook():
 
     action, date = cb["data"].split("|")
 
-    db = load_db()
-
-    if date not in db:
-        db[date] = {}
-
     # =====================
-    # BLOCCO SE HA GIÀ RISPOSTO
-    # =====================
-    if username in db[date]:
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-            data={
-                "callback_query_id": cb_id,
-                "text": "Hai già risposto 👍"
-            }
-        )
-        return "ok", 200
-
-    # =====================
-    # SALVA RISPOSTA
+    # SAVE RESPONSE
     # =====================
     save_response(date, username, action)
 
-    # =====================
-    # CALCOLO STATI
-    # =====================
     responses = get_responses(date)
+    expected_users = get_expected(date)
+
+    responded_users = set(responses.keys())
+    missing = expected_users - responded_users
 
     ok_users = [to_name(u) for u, s in responses.items() if s == "ok"]
     no_users = [to_name(u) for u, s in responses.items() if s != "ok"]
 
-    # =====================
-    # LOAD EXPECTED
-    # =====================
-    expected_file = "expected_users.json"
-    try:
-        with open(expected_file, "r", encoding="utf-8") as f:
-            expected = json.load(f)
-        expected_users = get_expected(date)
-    except:
-        expected_users = set()
-
-    missing = expected_users - set(responses.keys())
-
-    # =====================
-    # TESTO
-    # =====================
     status_text = "\n\n📋 RISPOSTE\n\n"
 
     status_text += "✅ OK:\n"
@@ -127,9 +143,6 @@ def webhook():
 
     status_text += f"\n\n⏳ Mancano {len(missing)} risposte"
 
-    # =====================
-    # BOTTONI
-    # =====================
     if len(missing) == 0:
         keyboard = {"inline_keyboard": []}
         status_text += "\n\n🔒 Risposte chiuse"
@@ -141,9 +154,6 @@ def webhook():
             ]]
         }
 
-    # =====================
-    # UPDATE MESSAGGIO
-    # =====================
     original = cb["message"]["text"]
 
     if "\n\n📋 RISPOSTE" in original:
@@ -159,9 +169,6 @@ def webhook():
         }
     )
 
-    # =====================
-    # POPUP
-    # =====================
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
         data={

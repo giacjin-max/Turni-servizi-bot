@@ -3,28 +3,40 @@ name: Turni Telegram Bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 7 * * 1"   # Lunedì mattina
-    - cron: "0 18 * * 4"  # Giovedì sera
-    - cron: "0 7 * * 6"   # Sabato mattina
+    - cron: "0 7 * * 1"   # Lunedì mattina → sender
+    - cron: "0 18 * * 4"  # Giovedì sera → reminder
+    - cron: "0 7 * * 6"   # Sabato mattina → promemoria domenica
+
+permissions:
+  contents: write
 
 jobs:
   run:
     runs-on: ubuntu-latest
 
     steps:
+      # =====================
+      # CHECKOUT
+      # =====================
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # =====================
+      # PYTHON
+      # =====================
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # =====================
+      # DEPENDENCIES
+      # =====================
       - name: Install dependencies
         run: pip install flask requests supabase pandas openpyxl
 
       # =====================
-      # LUNEDÌ → SEND TURNI
+      # LUNEDÌ → SENDER
       # =====================
       - name: Run sender
         if: github.event.schedule == '0 7 * * 1'
@@ -69,5 +81,10 @@ jobs:
           git add .
           git diff --staged --quiet || git commit -m "update bot state"
 
+      # =====================
+      # PUSH FIXATO (NO 403)
+      # =====================
       - name: Push changes
-        run: git push
+        uses: ad-m/github-push-action@v0.8.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}

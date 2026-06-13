@@ -27,11 +27,9 @@ def save_json(path, data):
 # =====================
 # DB
 # =====================
-def load_db():
-    return load_json(DB_FILE)
+from db import init_db, save_response, get_responses, get_expected
 
-def save_db(db):
-    save_json(DB_FILE, db)
+init_db()
 
 # =====================
 # RUBRICA

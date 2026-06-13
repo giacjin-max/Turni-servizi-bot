@@ -110,14 +110,26 @@ def webhook():
     save_db(db)
 
     # =====================
-    # UTENTI ATTESI (DAL MESSAGGIO TURNI)
-    # =====================
-    expected_users = extract_expected_users(cb["message"]["text"])
-    expected_users = set(expected_users)
+# UTENTI ATTESI
+# =====================
+try:
+    with open("expected_users.json", "r", encoding="utf-8") as f:
+        expected = json.load(f)
 
-    responded_users = set(db[date].keys())
+    expected_users = set(expected.get(date, []))
+except:
+    expected_users = set()
 
-    remaining = len(expected_users - responded_users)
+# =====================
+# UTENTI CHE HANNO RISPOSTO
+# =====================
+responded_users = set(db[date].keys())
+
+remaining = len(expected_users - responded_users)
+
+print("EXPECTED:", expected_users)
+print("RESPONDED:", responded_users)
+print("MISSING:", expected_users - responded_users)
 
     # =====================
     # RISPOSTE

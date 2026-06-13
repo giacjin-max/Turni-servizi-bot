@@ -1,22 +1,34 @@
-import json
 import os
-import requests
+import json
 import pandas as pd
+import sqlite3
+import requests
 
-# =====================
-# CONFIG
-# =====================
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 
-URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-EXCEL_FILE = "turni.xlsx"
-EXPECTED_FILE = "expected_users.json"
+DB_NAME = "bot.db"
 RUBRICA_FILE = "rubrica.json"
 
+url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+
 # =====================
-# LOAD RUBRICA
+# DB INIT EXPECTED
+# =====================
+def save_expected(date, users):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+
+    for u in users:
+        c.execute("INSERT OR IGNORE INTO expected VALUES (?, ?)", (date, u))
+
+    conn.commit()
+    conn.close()
+
+
+# =====================
+# RUBRICA
 # =====================
 def load_rubrica():
     try:
@@ -27,49 +39,32 @@ def load_rubrica():
 
 rubrica = load_rubrica()
 
-def normalize_username(name):
-    if not name:
-        return None
-    return rubrica.get(name, "").lower().replace("@", "").strip() or None
+def to_tag(name):
+    name = str(name).strip()
+    return rubrica.get(name, name)
+
 
 # =====================
-# SAVE EXPECTED
+# EXCEL
 # =====================
-def save_expected(date, users):
-    data = {}
-
-    if os.path.exists(EXPECTED_FILE):
-        with open(EXPECTED_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-    data[date] = sorted(list(set(users)))
-
-    with open(EXPECTED_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
-# =====================
-# LOAD EXCEL
-# =====================
-df = pd.read_excel(EXCEL_FILE)
+df = pd.read_excel("turni.xlsx")
 df = df[df["Data"].notna()].copy()
 df["Data"] = pd.to_datetime(df["Data"])
 
 riga = df.sort_values("Data").iloc[0]
 date = riga["Data"].strftime("%Y-%m-%d")
 
-# =====================
-# MESSAGE + EXPECTED
-# =====================
-msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
-msg += "👉 Rispondi ai turni usando i pulsanti\n\n"
-
 expected_users = set()
+
+msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
+msg += "👉 Rispondi ai turni cliccando i pulsanti\n\n"
 
 for col in df.columns:
     if col == "Data":
         continue
 
     value = riga[col]
+
     if pd.isna(value):
         continue
 
@@ -82,22 +77,19 @@ for col in df.columns:
         if not nome:
             continue
 
-        username = normalize_username(nome)
+        tag = to_tag(nome)
+        msg += f"    {tag}\n"
 
-        if username:
-            expected_users.add(username)
-            msg += f"   {username}\n"
-        else:
-            msg += f"   {nome} (⚠️ non in rubrica)\n"
+        expected_users.add(tag.replace("@", "").lower())
 
     msg += "\n"
 
+
 # =====================
-# SAVE EXPECTED
+# SAVE EXPECTED SQLITE
 # =====================
 save_expected(date, expected_users)
 
-print("EXPECTED:", expected_users)
 
 # =====================
 # BUTTONS
@@ -109,11 +101,12 @@ keyboard = {
     ]]
 }
 
+
 # =====================
 # SEND
 # =====================
 res = requests.post(
-    URL,
+    url,
     data={
         "chat_id": CHAT_ID,
         "text": msg,
@@ -122,5 +115,5 @@ res = requests.post(
 )
 
 print("STATUS:", res.status_code)
-print("DATE:", date)
-print("TURNI INVIATI ✔")
+print("DATA:", date)
+print("TURNI INVIATI")

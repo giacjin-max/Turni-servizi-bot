@@ -3,6 +3,7 @@ import os
 import json
 import requests
 import sqlite3
+import re
 
 app = Flask(__name__)
 
@@ -27,13 +28,6 @@ def init_db():
     )
     """)
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS expected (
-        date TEXT,
-        user TEXT
-    )
-    """)
-
     conn.commit()
     conn.close()
 
@@ -51,12 +45,17 @@ def load_rubrica():
 
 rubrica = load_rubrica()
 
-def to_name(username):
-    username = str(username).lower().replace("@", "")
-    for name, u in rubrica.items():
-        if str(u).lower().replace("@", "") == username:
-            return name
-    return username
+def to_name(user):
+    for k, v in rubrica.items():
+        if v.lower().replace("@", "") == user.lower().replace("@", ""):
+            return k
+    return user
+
+# =====================
+# EXPECTED USERS DAL MESSAGGIO
+# =====================
+def extract_expected_users(text):
+    return set(re.findall(r"@([a-zA-Z0-9_]+)", text.lower()))
 
 # =====================
 # DB FUNCTIONS
@@ -82,16 +81,6 @@ def get_responses(date):
     conn.close()
     return dict(rows)
 
-def get_expected(date):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-
-    c.execute("SELECT user FROM expected WHERE date=?", (date,))
-    rows = c.fetchall()
-
-    conn.close()
-    return set(r[0] for r in rows)
-
 # =====================
 # WEBHOOK
 # =====================
@@ -113,23 +102,30 @@ def webhook():
     username = cb["from"].get("username")
 
     if username:
-        username = username.lower().replace("@", "").strip()
+        username = username.lower()
     else:
         username = str(cb["from"]["id"])
 
     action, date = cb["data"].split("|")
 
     # =====================
-    # SAVE RESPONSE
+    # SALVA RISPOSTA
     # =====================
     save_response(date, username, action)
 
     responses = get_responses(date)
-    expected_users = get_expected(date)
+
+    # =====================
+    # UTENTI ATTESI (DAL MESSAGGIO)
+    # =====================
+    expected_users = extract_expected_users(cb["message"]["text"])
 
     responded_users = set(responses.keys())
     missing = expected_users - responded_users
 
+    # =====================
+    # COSTRUISCI LISTA
+    # =====================
     ok_users = [to_name(u) for u, s in responses.items() if s == "ok"]
     no_users = [to_name(u) for u, s in responses.items() if s != "ok"]
 
@@ -143,7 +139,10 @@ def webhook():
 
     status_text += f"\n\n⏳ Mancano {len(missing)} risposte"
 
-    if len(missing) == 0:
+    # =====================
+    # BOTTONI (CHIUSURA SOLO SE TUTTI HANNO RISPOSTO)
+    # =====================
+    if len(missing) == 0 and len(expected_users) > 0:
         keyboard = {"inline_keyboard": []}
         status_text += "\n\n🔒 Risposte chiuse"
     else:
@@ -154,6 +153,9 @@ def webhook():
             ]]
         }
 
+    # =====================
+    # AGGIORNA MESSAGGIO
+    # =====================
     original = cb["message"]["text"]
 
     if "\n\n📋 RISPOSTE" in original:
@@ -169,6 +171,9 @@ def webhook():
         }
     )
 
+    # =====================
+    # POPUP
+    # =====================
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
         data={

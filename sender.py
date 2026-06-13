@@ -27,33 +27,25 @@ def load_rubrica():
 
 rubrica = load_rubrica()
 
-def to_username(nome):
-    nome = str(nome).strip()
-    username = rubrica.get(nome)
-    if not username:
+def normalize_username(name):
+    if not name:
         return None
-    return username.lower().strip()
+    return rubrica.get(name, "").lower().replace("@", "").strip() or None
 
 # =====================
-# SAVE EXPECTED USERS
+# SAVE EXPECTED
 # =====================
 def save_expected(date, users):
-    try:
-        data = {}
+    data = {}
 
-        if os.path.exists(EXPECTED_FILE):
-            with open(EXPECTED_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
+    if os.path.exists(EXPECTED_FILE):
+        with open(EXPECTED_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
-        data[date] = sorted(list(set(users)))
+    data[date] = sorted(list(set(users)))
 
-        with open(EXPECTED_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-
-        print("💾 EXPECTED SALVATO:", data[date])
-
-    except Exception as e:
-        print("❌ ERRORE SAVE EXPECTED:", e)
+    with open(EXPECTED_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 # =====================
 # LOAD EXCEL
@@ -66,10 +58,10 @@ riga = df.sort_values("Data").iloc[0]
 date = riga["Data"].strftime("%Y-%m-%d")
 
 # =====================
-# BUILD MESSAGE
+# MESSAGE + EXPECTED
 # =====================
 msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
-msg += "👉 Rispondi ai turni cliccando i pulsanti\n\n"
+msg += "👉 Rispondi ai turni usando i pulsanti\n\n"
 
 expected_users = set()
 
@@ -90,7 +82,7 @@ for col in df.columns:
         if not nome:
             continue
 
-        username = to_username(nome)
+        username = normalize_username(nome)
 
         if username:
             expected_users.add(username)
@@ -101,24 +93,24 @@ for col in df.columns:
     msg += "\n"
 
 # =====================
-# SAVE EXPECTED USERS
+# SAVE EXPECTED
 # =====================
 save_expected(date, expected_users)
 
+print("EXPECTED:", expected_users)
+
 # =====================
-# INLINE KEYBOARD
+# BUTTONS
 # =====================
 keyboard = {
-    "inline_keyboard": [
-        [
-            {"text": "✅ OK", "callback_data": f"ok|{date}"},
-            {"text": "❌ NON POSSO", "callback_data": f"no|{date}"}
-        ]
-    ]
+    "inline_keyboard": [[
+        {"text": "✅ OK", "callback_data": f"ok|{date}"},
+        {"text": "❌ NON POSSO", "callback_data": f"no|{date}"}
+    ]]
 }
 
 # =====================
-# SEND MESSAGE
+# SEND
 # =====================
 res = requests.post(
     URL,
@@ -131,5 +123,4 @@ res = requests.post(
 
 print("STATUS:", res.status_code)
 print("DATE:", date)
-print("EXPECTED USERS:", len(expected_users))
 print("TURNI INVIATI ✔")

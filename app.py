@@ -12,48 +12,47 @@ EXPECTED_FILE = "expected_users.json"
 RUBRICA_FILE = "rubrica.json"
 
 # =====================
-# RUBRICA
+# LOAD FILES
 # =====================
-def load_rubrica():
+def load_json(path):
     try:
-        with open(RUBRICA_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except:
         return {}
 
-rubrica = load_rubrica()
-
-def to_username(name):
-    """
-    prende nome Excel → username Telegram
-    """
-    name = str(name).strip()
-    return rubrica.get(name, None)
+def save_json(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 # =====================
 # DB
 # =====================
 def load_db():
-    try:
-        with open(DB_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
+    return load_json(DB_FILE)
 
 def save_db(db):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(db, f, indent=2, ensure_ascii=False)
+    save_json(DB_FILE, db)
+
+# =====================
+# RUBRICA
+# =====================
+rubrica = load_json(RUBRICA_FILE)
+
+def normalize_username(name):
+    """
+    tutto SENZA @
+    """
+    if not name:
+        return None
+    return str(name).lower().replace("@", "").strip()
 
 # =====================
 # EXPECTED
 # =====================
 def load_expected(date):
-    try:
-        with open(EXPECTED_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return set(data.get(date, []))
-    except:
-        return set()
+    data = load_json(EXPECTED_FILE)
+    return set(normalize_username(u) for u in data.get(date, []))
 
 # =====================
 # WEBHOOK
@@ -63,7 +62,7 @@ def webhook():
 
     data = request.get_json(silent=True)
 
-    print("UPDATE:", json.dumps(data, ensure_ascii=False), flush=True)
+    print("📩 UPDATE:", json.dumps(data, ensure_ascii=False), flush=True)
 
     if not data or "callback_query" not in data:
         return "ok", 200
@@ -74,37 +73,56 @@ def webhook():
     chat_id = cb["message"]["chat"]["id"]
     msg_id = cb["message"]["message_id"]
 
-    # username reale Telegram
-    tg_username = cb["from"].get("username")
-    if not tg_username:
-        tg_username = str(cb["from"]["id"])
-    tg_username = "@" + tg_username.lower()
+    # =====================
+    # USER TELEGRAM
+    # =====================
+    username = cb["from"].get("username")
+    if username:
+        username = normalize_username(username)
+    else:
+        username = normalize_username(cb["from"]["id"])
 
     action, date = cb["data"].split("|")
 
+    # =====================
+    # LOAD DB
+    # =====================
     db = load_db()
+
     if date not in db:
         db[date] = {}
 
     # =====================
-    # SALVA RISPOSTA (USERNAME TELEGRAM DIRETTO)
+    # BLOCCO DOPPIO CLICK
     # =====================
-    db[date][tg_username] = action
+    if username in db[date]:
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+            data={
+                "callback_query_id": cb_id,
+                "text": "Hai già risposto 👍"
+            }
+        )
+        return "ok", 200
+
+    # =====================
+    # SALVA RISPOSTA
+    # =====================
+    db[date][username] = action
     save_db(db)
 
     # =====================
-    # EXPECTED USERS (GIÀ TELEGRAM USERNAME)
+    # EXPECTED USERS
     # =====================
     expected_users = load_expected(date)
-
     responded_users = set(db[date].keys())
-    missing = expected_users - responded_users
 
+    missing = expected_users - responded_users
     remaining = len(missing)
 
-    print("EXPECTED:", expected_users, flush=True)
-    print("RESPONDED:", responded_users, flush=True)
-    print("MISSING:", missing, flush=True)
+    print("📌 EXPECTED:", expected_users, flush=True)
+    print("📌 RESPONDED:", responded_users, flush=True)
+    print("📌 MISSING:", missing, flush=True)
 
     # =====================
     # RISPOSTE
@@ -132,7 +150,7 @@ def webhook():
         }
 
     # =====================
-    # UPDATE MESSAGGIO
+    # EDIT MESSAGGIO
     # =====================
     original = cb["message"]["text"]
 
@@ -162,7 +180,9 @@ def webhook():
 
     return "ok", 200
 
-
+# =====================
+# HEALTHCHECK
+# =====================
 @app.route("/", methods=["GET"])
 def home():
     return "Webhook attivo", 200

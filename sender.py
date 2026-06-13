@@ -2,19 +2,16 @@ import os
 import json
 import pandas as pd
 import requests
-from datetime import datetime
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
-
-RUBRICA_FILE = "rubrica.json"
 
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 # =====================
 # RUBRICA
 # =====================
-with open(RUBRICA_FILE, "r", encoding="utf-8") as f:
+with open("rubrica.json", "r", encoding="utf-8") as f:
     rubrica = json.load(f)
 
 def to_tag(name):
@@ -35,7 +32,7 @@ date = riga["Data"].strftime("%Y-%m-%d")
 # MESSAGGIO
 # =====================
 msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
-msg += "👉 Rispondi ai turni cliccando i pulsanti\n\n"
+msg += "👉 Premi OK quando hai visto il turno\n\n"
 
 for col in df.columns:
     if col == "Data":
@@ -54,18 +51,16 @@ for col in df.columns:
         if not nome:
             continue
 
-        tag = to_tag(nome)
-        msg += f"    {tag}\n"
+        msg += f"    {to_tag(nome)}\n"
 
     msg += "\n"
 
 # =====================
-# BOTTONI
+# SOLO TASTO OK
 # =====================
 keyboard = {
     "inline_keyboard": [[
-        {"text": "✅ OK", "callback_data": f"ok|{date}"},
-        {"text": "❌ NON POSSO", "callback_data": f"no|{date}"}
+        {"text": "✅ OK", "callback_data": f"ok|{date}"}
     ]]
 }
 

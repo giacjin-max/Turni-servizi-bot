@@ -2,100 +2,77 @@ name: Turni Telegram Bot
 
 on:
   workflow_dispatch:
-
   schedule:
-    # Lunedì mattina (UTC 06:00 ≈ 08:00 Italia)
-    - cron: "0 6 * * 1"
+    # LUNEDÌ MATTINA - invio turni
+    - cron: "0 7 * * 1"
 
-    # Mercoledì mattina
-    - cron: "0 6 * * 3"
+    # GIOVEDÌ SERA - reminder mancanti
+    - cron: "0 18 * * 4"
 
-    # Sabato mattina
-    - cron: "0 6 * * 6"
+    # SABATO MATTINA - promemoria domenica
+    - cron: "0 7 * * 6"
 
 jobs:
   run:
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: write
-
     steps:
-      # =====================
-      # CHECKOUT
-      # =====================
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # =====================
-      # PYTHON
-      # =====================
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
-  run: pip install pandas openpyxl requests flask supabase
+        run: pip install flask requests supabase pandas openpyxl
 
       # =====================
-      # MANUAL RUN (INVIA TURNI)
+      # LUNEDÌ → SEND TURNI
       # =====================
-      - name: Manual run (sender)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Run sender (Monday)
+        if: github.event.schedule == '0 7 * * 1'
         run: python sender.py
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
 
       # =====================
-      # LUNEDÌ → SOLO TURNI
+      # GIOVEDÌ → REMINDER
       # =====================
-      - name: Monday sender
-        if: github.event_name == 'schedule' && github.event.schedule == '0 6 * * 1'
-        run: python sender.py
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-
-      # =====================
-      # MERCOLEDÌ → TURNI + REMINDER MANCANTI
-      # =====================
-      - name: Wednesday sender
-        if: github.event_name == 'schedule' && github.event.schedule == '0 6 * * 3'
-        run: python sender.py
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-
-      - name: Wednesday reminder (missing only)
-        if: github.event_name == 'schedule' && github.event.schedule == '0 6 * * 3'
+      - name: Run reminder (Thursday)
+        if: github.event.schedule == '0 18 * * 4'
         run: python reminder.py
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
 
       # =====================
-      # SABATO → REMINDER GENERALE
+      # SABATO → PROMEMORIA DOMENICA
       # =====================
-      - name: Saturday reminder all
-        if: github.event_name == 'schedule' && github.event.schedule == '0 6 * * 6'
-        run: python reminder_all.py
+      - name: Run sunday reminder (Saturday)
+        if: github.event.schedule == '0 7 * * 6'
+        run: python reminder_sunday.py
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
 
       # =====================
-      # SALVATAGGIO STATO
+      # COMMIT STATE
       # =====================
       - name: Commit bot state
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
-
-          git add offset.json reminder_log.json expected_users.json
-
-          git diff --staged --quiet || git commit -m "Update bot state"
+          git add .
+          git diff --staged --quiet || git commit -m "update bot state"
 
       - name: Push changes
         run: git push

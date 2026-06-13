@@ -1,2 +1,5 @@
+supabase
 flask
 requests
+pandas
+openpyxl

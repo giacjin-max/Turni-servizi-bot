@@ -91,8 +91,7 @@ def webhook():
     # =====================
     # SALVA RISPOSTA
     # =====================
-    db[date][username] = action
-    save_db(db)
+    save_response(date, username, action)
 
     # =====================
     # CALCOLO STATI

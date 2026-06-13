@@ -1,14 +1,11 @@
 import os
-import logging
+import json
 import requests
 from flask import Flask, request
 from supabase import create_client
 
 app = Flask(__name__)
 
-# =====================
-# ENV
-# =====================
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
@@ -16,64 +13,53 @@ SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # =====================
-# LOG
+# RUBRICA (reverse mapping)
 # =====================
-logging.basicConfig(level=logging.INFO)
+with open("rubrica.json", "r", encoding="utf-8") as f:
+    rubrica = json.load(f)
 
-# =====================
-# SAVE RESPONSE (SUPABASE)
-# =====================
-def save_response(date, username, status):
+reverse_rubrica = {
+    v.lower().replace("@", ""): k
+    for k, v in rubrica.items()
+}
 
-    try:
-        data = [{
-            "date": date,
-            "username": username,
-            "status": status
-        }]
-
-        res = supabase.table("responses") \
-            .upsert(data, on_conflict="date,username") \
-            .execute()
-
-        print("SUPABASE OK:", res, flush=True)
-
-    except Exception as e:
-        print("SUPABASE ERROR:", e, flush=True)
+def get_service_name(telegram_user):
+    user = telegram_user.lower().replace("@", "")
+    return reverse_rubrica.get(user, user)
 
 # =====================
-# TELEGRAM SEND MESSAGE
+# SUPABASE SAVE
 # =====================
-def send_message(chat_id, text, buttons=None):
+def save_response(date, service_name, status):
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML"
-    }
-
-    if buttons:
-        payload["reply_markup"] = buttons
-
-    requests.post(url, json=payload)
+    supabase.table("responses").upsert({
+        "date": date,
+        "username": service_name,
+        "status": status
+    }, on_conflict="date,username").execute()
 
 # =====================
-# EDIT MESSAGE
+# READ RESPONSES
 # =====================
-def edit_message(chat_id, message_id, text):
+def get_responses(date):
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
+    return supabase.table("responses") \
+        .select("*") \
+        .eq("date", date) \
+        .execute().data
 
-    payload = {
-        "chat_id": chat_id,
-        "message_id": message_id,
-        "text": text,
-        "parse_mode": "HTML"
-    }
+# =====================
+# BUILD MESSAGE
+# =====================
+def build_message(original_text, responses):
 
-    requests.post(url, json=payload)
+    header = original_text.split("\n")[0] + "\n\n"
+    msg = header
+
+    for r in responses:
+        msg += f"• {r['username']} → {r['status']}\n"
+
+    return msg
 
 # =====================
 # WEBHOOK
@@ -83,58 +69,45 @@ def webhook():
 
     data = request.get_json(silent=True)
 
-    if not data:
+    if not data or "callback_query" not in data:
         return "ok", 200
 
-    # =====================
-    # CALLBACK BUTTON CLICK
-    # =====================
-    if "callback_query" in data:
+    cb = data["callback_query"]
 
-        cb = data["callback_query"]
+    chat_id = cb["message"]["chat"]["id"]
+    msg_id = cb["message"]["message_id"]
 
-        cb_id = cb["id"]
-        chat_id = cb["message"]["chat"]["id"]
-        msg_id = cb["message"]["message_id"]
+    telegram_user = cb["from"].get("username") or str(cb["from"]["id"])
+    action, date = cb["data"].split("|")
 
-        username = cb["from"].get("username") or str(cb["from"]["id"])
-        username = username.lower()
+    service_name = get_service_name(telegram_user)
 
-        action, date = cb["data"].split("|")
+    print("CLICK:", telegram_user, "→", service_name, action, date, flush=True)
 
-        print("CLICK:", username, action, date, flush=True)
+    save_response(date, service_name, action)
 
-        # salva su supabase
-        save_response(date, username, action)
+    responses = get_responses(date)
 
-        # risposta telegram obbligatoria
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-            data={
-                "callback_query_id": cb_id,
-                "text": "Salvato ✔"
-            }
-        )
+    new_text = build_message(cb["message"]["text"], responses)
 
-        # aggiorna messaggio
-        edit_message(chat_id, msg_id, f"Risposta registrata ✔\n{username}: {action}")
+    requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
+        json={
+            "chat_id": chat_id,
+            "message_id": msg_id,
+            "text": new_text
+        }
+    )
 
-        return "ok", 200
+    requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+        data={"callback_query_id": cb["id"], "text": "Salvato ✔"}
+    )
 
     return "ok", 200
 
-#===
-# test
-#=== 
-
-@app.route("/test-sender")
-def test_sender():
-    import os
-    os.system("python sender.py")
-    return "sender eseguito", 200
-
 # =====================
-# RUN
+# START
 # =====================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)

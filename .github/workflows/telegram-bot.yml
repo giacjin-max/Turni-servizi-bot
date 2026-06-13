@@ -93,7 +93,7 @@ jobs:
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
 
-          git add responses.json expected_users.json
+          git add offset.json reminder_log.json expected_users.json
 
           git diff --staged --quiet || git commit -m "Update bot state"
 

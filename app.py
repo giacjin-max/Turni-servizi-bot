@@ -172,12 +172,12 @@ requests.post(
 )
 return "ok", 200
 
-@app.route(”/”, methods=[“GET”])
+@app.route("/", methods=["GET"])
 def home():
-return “Webhook attivo”, 200
+return "Webhook attivo", 200
 
-if name == “main”:
+if name == "main":
 app.run(
-host=“0.0.0.0”,
-port=int(os.environ.get(“PORT”, 5000))
+host="0.0.0.0",
+port=int(os.environ.get("PORT", 5000))
 )

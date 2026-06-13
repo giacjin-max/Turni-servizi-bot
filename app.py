@@ -1,112 +1,59 @@
+from flask import Flask, request
 import os
 import json
+import re
 import requests
-import pandas as pd
-from flask import Flask, request
 from supabase import create_client
 
 app = Flask(__name__)
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
+# =====================
+# CONFIG
+# =====================
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # =====================
-# RUBRICA (telegram → servizio)
+# RUBRICA
 # =====================
-with open("rubrica.json", "r", encoding="utf-8") as f:
-    rubrica = json.load(f)
+def load_rubrica():
+    try:
+        with open("rubrica.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
 
-reverse_rubrica = {
-    v.lower().replace("@", ""): k
-    for k, v in rubrica.items()
-}
+rubrica = load_rubrica()
 
-def get_service_name(telegram_user):
-    user = telegram_user.lower().replace("@", "")
-    return reverse_rubrica.get(user)
-
-# =====================
-# SERVIZI DEL GIORNO
-# =====================
-def get_services_for_date(riga):
-
-    services = []
-
-    for col in riga.index:
-        if col == "Data":
-            continue
-
-        value = riga[col]
-
-        if pd.isna(value):
-            continue
-
-        nomi = str(value).replace(";", ",").split(",")
-
-        for nome in nomi:
-            nome = nome.strip()
-            if nome:
-                services.append(nome)
-
-    return services
+def to_name(username):
+    username = username.lower().replace("@", "")
+    for nome, tag in rubrica.items():
+        if tag.lower().replace("@", "") == username:
+            return nome
+    return username
 
 # =====================
-# SUPABASE SAVE
+# UTENTI ATTESI
 # =====================
-def save_response(date, service_name):
+def extract_expected_users(text):
+    return set(re.findall(r"@([a-zA-Z0-9_]+)", text.lower()))
 
+# =====================
+# SUPABASE
+# =====================
+def save_response(date, username, status):
     supabase.table("responses").upsert({
         "date": date,
-        "username": service_name,
-        "status": "ok"
-    }, on_conflict="date,username").execute()
+        "username": username,
+        "status": status
+    }).execute()
 
-# =====================
-# READ RESPONSES
-# =====================
 def get_responses(date):
-
-    return supabase.table("responses") \
-        .select("*") \
-        .eq("date", date) \
-        .execute().data
-
-# =====================
-# BUILD MESSAGE (Excel base + Supabase overlay)
-# =====================
-def build_message(riga, status_map):
-
-    msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
-
-    for col in riga.index:
-        if col == "Data":
-            continue
-
-        value = riga[col]
-
-        if pd.isna(value):
-            continue
-
-        nomi = str(value).replace(";", ",").split(",")
-
-        msg += f"• {col}\n"
-
-        for nome in nomi:
-            nome = nome.strip()
-            if not nome:
-                continue
-
-            if nome in status_map:
-                msg += f"    {nome} 🟢 OK\n"
-            else:
-                msg += f"    {nome}\n"
-
-        msg += "\n"
-
-    return msg
+    res = supabase.table("responses").select("*").eq("date", date).execute()
+    return {r["username"]: r["status"] for r in res.data}
 
 # =====================
 # WEBHOOK
@@ -116,103 +63,128 @@ def webhook():
 
     data = request.get_json(silent=True)
 
-    if not data or "callback_query" not in data:
+    if not data:
         return "ok", 200
 
-    cb = data["callback_query"]
-
-    chat_id = cb["message"]["chat"]["id"]
-    msg_id = cb["message"]["message_id"]
-
-    telegram_user = cb["from"].get("username") or str(cb["from"]["id"])
-    date = cb["data"].split("|")[1]
-
     # =====================
-    # EXCEL LOAD
+    # CALLBACK QUERY
     # =====================
-    df = pd.read_excel("turni.xlsx")
-    df = df[df["Data"].notna()].copy()
-    df["Data"] = pd.to_datetime(df["Data"])
-    df = df.sort_values("Data")
+    if "callback_query" in data:
 
-    riga = df.iloc[0]
+        cb = data["callback_query"]
 
-    # =====================
-    # MAP TELEGRAM → SERVIZIO
-    # =====================
-    service_name = get_service_name(telegram_user)
+        cb_id = cb["id"]
+        chat_id = cb["message"]["chat"]["id"]
+        msg_id = cb["message"]["message_id"]
 
-    if not service_name:
+        username = cb["from"].get("username") or str(cb["from"]["id"])
+        username = username.lower()
+
+        action, date = cb["data"].split("|")
+
+        text_message = cb["message"]["text"]
+
+        expected_users = extract_expected_users(text_message)
+
+        # =====================
+        # BLOCCO NON ASSEGNATI
+        # =====================
+        if username not in expected_users:
+
+            requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+                data={
+                    "callback_query_id": cb_id,
+                    "text": "Non sei assegnato 🚫"
+                }
+            )
+            return "ok", 200
+
+        # =====================
+        # NOOP
+        # =====================
+        if action == "noop":
+            return "ok", 200
+
+        # =====================
+        # SAVE RESPONSE
+        # =====================
+        save_response(date, username, action)
+
+        responses = get_responses(date)
+
+        responded_users = set(responses.keys())
+        missing = expected_users - responded_users
+
+        # =====================
+        # KEYBOARD PRO
+        # =====================
+        if username in responded_users:
+            keyboard = {
+                "inline_keyboard": [[
+                    {"text": "✔ Risposta registrata", "callback_data": "noop"}
+                ]]
+            }
+        else:
+            keyboard = {
+                "inline_keyboard": [[
+                    {"text": "✅ OK", "callback_data": f"ok|{date}"},
+                    {"text": "❌ NON POSSO", "callback_data": f"no|{date}"}
+                ]]
+            }
+
+        # =====================
+        # RISPOSTE (NOMI)
+        # =====================
+        ok_users = [to_name(u) for u, s in responses.items() if s == "ok"]
+        no_users = [to_name(u) for u, s in responses.items() if s != "ok"]
+
+        status_text = "\n\n📋 RISPOSTE\n\n"
+
+        status_text += "✅ OK:\n"
+        status_text += "\n".join(ok_users) if ok_users else "-"
+
+        status_text += "\n\n❌ NON POSSO:\n"
+        status_text += "\n".join(no_users) if no_users else "-"
+
+        status_text += f"\n\n⏳ Mancano {len(missing)} risposte"
+
+        # =====================
+        # AGGIORNA MESSAGGIO
+        # =====================
+        original = text_message
+
+        if "\n\n📋 RISPOSTE" in original:
+            original = original.split("\n\n📋 RISPOSTE")[0]
+
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
+            json={
+                "chat_id": chat_id,
+                "message_id": msg_id,
+                "text": original + status_text,
+                "reply_markup": keyboard
+            }
+        )
+
+        # callback popup
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
             data={
-                "callback_query_id": cb["id"],
-                "text": "Non sei assegnato a nessun servizio ❌",
-                "show_alert": True
-            }
-        )
-        return "ok", 200
-
-    # =====================
-    # BLOCCO SE NON IN TURNO
-    # =====================
-    services_today = get_services_for_date(riga)
-
-    if service_name not in services_today:
-
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-            data={
-                "callback_query_id": cb["id"],
-                "text": "Non sei in servizio oggi ❌",
-                "show_alert": True
+                "callback_query_id": cb_id,
+                "text": "Salvato ✔"
             }
         )
 
         return "ok", 200
-
-    # =====================
-    # SAVE RESPONSE
-    # =====================
-    save_response(date, service_name)
-
-    # =====================
-    # READ + BUILD
-    # =====================
-    responses = get_responses(date)
-
-    status_map = {
-        r["username"]: r["status"]
-        for r in responses
-    }
-
-    new_text = build_message(riga, status_map)
-
-    # =====================
-    # EDIT MESSAGE
-    # =====================
-    requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
-        json={
-            "chat_id": chat_id,
-            "message_id": msg_id,
-            "text": new_text
-        }
-    )
-
-    # =====================
-    # CALLBACK OK
-    # =====================
-    requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-        data={
-            "callback_query_id": cb["id"],
-            "text": "OK registrato 🟢"
-        }
-    )
 
     return "ok", 200
 
+
+@app.route("/", methods=["GET"])
+def home():
+    return "OK", 200
+    
 # =======
 # test
 # =======
@@ -221,11 +193,9 @@ def test_sender():
     import os
     os.system("python sender.py")
     return "sender eseguito", 200
-    
-    
-# =====================
-# START
-# =====================
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
 

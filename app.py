@@ -112,14 +112,12 @@ def webhook():
         save_response(date, username, action)
 
         responses = get_responses(date)
-
         responded_users = set(responses.keys())
-        missing = expected_users - responded_users
 
         # =====================
         # KEYBOARD PRO
         # =====================
-        if username in responded_users:
+        if username in responded_users and responses[username] == "ok":
             keyboard = {
                 "inline_keyboard": [[
                     {"text": "✔ Risposta registrata", "callback_data": "noop"}
@@ -134,23 +132,22 @@ def webhook():
             }
 
         # =====================
-        # RISPOSTE (NOMI)
+        # COSTRUZIONE LISTA CON 🟢
         # =====================
-        ok_users = [to_name(u) for u, s in responses.items() if s == "ok"]
-        no_users = [to_name(u) for u, s in responses.items() if s != "ok"]
+        all_users = list(expected_users)
 
         status_text = "\n\n📋 RISPOSTE\n\n"
 
-        status_text += "✅ OK:\n"
-        status_text += "\n".join(ok_users) if ok_users else "-"
+        for u in all_users:
+            name = to_name(u)
 
-        status_text += "\n\n❌ NON POSSO:\n"
-        status_text += "\n".join(no_users) if no_users else "-"
-
-        status_text += f"\n\n⏳ Mancano {len(missing)} risposte"
+            if u in responded_users and responses[u] == "ok":
+                status_text += f"{name} 🟢\n"
+            else:
+                status_text += f"{name}\n"
 
         # =====================
-        # AGGIORNA MESSAGGIO
+        # UPDATE MESSAGE
         # =====================
         original = text_message
 
@@ -167,7 +164,7 @@ def webhook():
             }
         )
 
-        # callback popup
+        # callback ack
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
             data={
@@ -181,10 +178,13 @@ def webhook():
     return "ok", 200
 
 
+# =====================
+# HEALTH CHECK
+# =====================
 @app.route("/", methods=["GET"])
 def home():
     return "OK", 200
-    
+
 # =======
 # test
 # =======
@@ -193,9 +193,8 @@ def test_sender():
     import os
     os.system("python sender.py")
     return "sender eseguito", 200
-
+    
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-
-
+    

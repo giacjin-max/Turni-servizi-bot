@@ -3,7 +3,7 @@ import os
 import json
 import requests
 
-app = Flask(name)
+app = Flask(__name__)
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
@@ -170,7 +170,7 @@ return "ok", 200
 def home():
 return "Webhook attivo", 200
 
-if name == "main":
+if __name__ == "__main__":
 app.run(
 host="0.0.0.0",
 port=int(os.environ.get("PORT", 5000))

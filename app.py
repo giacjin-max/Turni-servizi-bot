@@ -12,7 +12,7 @@ EXPECTED_FILE = "expected_users.json"
 RUBRICA_FILE = "rubrica.json"
 
 # =====================
-# LOAD FILES
+# LOAD JSON
 # =====================
 def load_json(path):
     try:
@@ -39,20 +39,20 @@ def save_db(db):
 # =====================
 rubrica = load_json(RUBRICA_FILE)
 
-def normalize_username(name):
-    """
-    tutto SENZA @
-    """
-    if not name:
-        return None
-    return str(name).lower().replace("@", "").strip()
+# username -> nome
+def to_name(username):
+    username = str(username).lower().replace("@", "")
+    for name, u in rubrica.items():
+        if str(u).lower().replace("@", "") == username:
+            return name
+    return username
 
 # =====================
 # EXPECTED
 # =====================
 def load_expected(date):
     data = load_json(EXPECTED_FILE)
-    return set(normalize_username(u) for u in data.get(date, []))
+    return set(data.get(date, []))
 
 # =====================
 # WEBHOOK
@@ -61,7 +61,6 @@ def load_expected(date):
 def webhook():
 
     data = request.get_json(silent=True)
-
     print("📩 UPDATE:", json.dumps(data, ensure_ascii=False), flush=True)
 
     if not data or "callback_query" not in data:
@@ -74,13 +73,14 @@ def webhook():
     msg_id = cb["message"]["message_id"]
 
     # =====================
-    # USER TELEGRAM
+    # USER NORMALIZZATO
     # =====================
     username = cb["from"].get("username")
+
     if username:
-        username = normalize_username(username)
+        username = username.lower().replace("@", "").strip()
     else:
-        username = normalize_username(cb["from"]["id"])
+        username = str(cb["from"]["id"])
 
     action, date = cb["data"].split("|")
 
@@ -112,7 +112,7 @@ def webhook():
     save_db(db)
 
     # =====================
-    # EXPECTED USERS
+    # LOAD EXPECTED
     # =====================
     expected_users = load_expected(date)
     responded_users = set(db[date].keys())
@@ -120,19 +120,32 @@ def webhook():
     missing = expected_users - responded_users
     remaining = len(missing)
 
-    print("📌 EXPECTED:", expected_users, flush=True)
-    print("📌 RESPONDED:", responded_users, flush=True)
-    print("📌 MISSING:", missing, flush=True)
+    print("📌 EXPECTED:", expected_users)
+    print("📌 RESPONDED:", responded_users)
+    print("📌 MISSING:", missing)
 
     # =====================
-    # RISPOSTE
+    # OK / NO CON NOME UMANO
     # =====================
-    ok_users = [u for u, s in db[date].items() if s == "ok"]
-    no_users = [u for u, s in db[date].items() if s != "ok"]
+    ok_users = [
+        to_name(u) for u, s in db[date].items() if s == "ok"
+    ]
 
+    no_users = [
+        to_name(u) for u, s in db[date].items() if s != "ok"
+    ]
+
+    # =====================
+    # STATUS TEXT
+    # =====================
     status_text = "\n\n📋 RISPOSTE\n\n"
-    status_text += "✅ OK:\n" + ("\n".join(ok_users) if ok_users else "-")
-    status_text += "\n\n❌ NON POSSO:\n" + ("\n".join(no_users) if no_users else "-")
+
+    status_text += "✅ OK:\n"
+    status_text += "\n".join(ok_users) if ok_users else "-"
+
+    status_text += "\n\n❌ NON POSSO:\n"
+    status_text += "\n".join(no_users) if no_users else "-"
+
     status_text += f"\n\n⏳ Mancano {remaining} risposte"
 
     # =====================
@@ -150,7 +163,7 @@ def webhook():
         }
 
     # =====================
-    # EDIT MESSAGGIO
+    # UPDATE MESSAGE
     # =====================
     original = cb["message"]["text"]
 
@@ -168,7 +181,7 @@ def webhook():
     )
 
     # =====================
-    # POPUP
+    # CALLBACK ANSWER
     # =====================
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",

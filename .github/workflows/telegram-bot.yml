@@ -3,14 +3,9 @@ name: Turni Telegram Bot
 on:
   workflow_dispatch:
   schedule:
-    # LUNEDÌ MATTINA - invio turni
-    - cron: "0 7 * * 1"
-
-    # GIOVEDÌ SERA - reminder mancanti
-    - cron: "0 18 * * 4"
-
-    # SABATO MATTINA - promemoria domenica
-    - cron: "0 7 * * 6"
+    - cron: "0 7 * * 1"   # Lunedì mattina
+    - cron: "0 18 * * 4"  # Giovedì sera
+    - cron: "0 7 * * 6"   # Sabato mattina
 
 jobs:
   run:
@@ -31,7 +26,7 @@ jobs:
       # =====================
       # LUNEDÌ → SEND TURNI
       # =====================
-      - name: Run sender (Monday)
+      - name: Run sender
         if: github.event.schedule == '0 7 * * 1'
         run: python sender.py
         env:
@@ -43,7 +38,7 @@ jobs:
       # =====================
       # GIOVEDÌ → REMINDER
       # =====================
-      - name: Run reminder (Thursday)
+      - name: Run reminder
         if: github.event.schedule == '0 18 * * 4'
         run: python reminder.py
         env:
@@ -55,7 +50,7 @@ jobs:
       # =====================
       # SABATO → PROMEMORIA DOMENICA
       # =====================
-      - name: Run sunday reminder (Saturday)
+      - name: Run sunday reminder
         if: github.event.schedule == '0 7 * * 6'
         run: python reminder_sunday.py
         env:
@@ -65,7 +60,7 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
 
       # =====================
-      # COMMIT STATE
+      # COMMIT STATO BOT
       # =====================
       - name: Commit bot state
         run: |

@@ -36,7 +36,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pandas openpyxl requests
+  run: pip install pandas openpyxl requests flask supabase
 
       # =====================
       # MANUAL RUN (INVIA TURNI)

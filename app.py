@@ -1,61 +1,40 @@
 from flask import Flask, request
 import os
 import json
-import requests
-import sqlite3
 import re
+import requests
+from supabase import create_client
 
 app = Flask(__name__)
 
+# =====================
+# CONFIG
+# =====================
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-# 🔥 PERCORSO PERSISTENTE (FONDAMENTALE PER NON PERDERE DATI)
-DB_NAME = "/data/bot.db"
-RUBRICA_FILE = "rubrica.json"
-
-# =====================
-# DEBUG STARTUP
-# =====================
-print("📦 DB PATH:", os.path.abspath(DB_NAME), flush=True)
-
-# =====================
-# INIT DB
-# =====================
-def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS responses (
-        date TEXT,
-        user TEXT,
-        status TEXT,
-        PRIMARY KEY (date, user)
-    )
-    """)
-
-    conn.commit()
-    conn.close()
-
-init_db()
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # =====================
 # RUBRICA
 # =====================
 def load_rubrica():
     try:
-        with open(RUBRICA_FILE, "r", encoding="utf-8") as f:
+        with open("rubrica.json", "r", encoding="utf-8") as f:
             return json.load(f)
     except:
         return {}
 
 rubrica = load_rubrica()
 
-def to_name(user):
-    for k, v in rubrica.items():
-        if v.lower().replace("@", "") == user.lower().replace("@", ""):
-            return k
-    return user
+# username -> nome
+def to_name(username):
+    username = username.lower().replace("@", "")
+    for nome, tag in rubrica.items():
+        if tag.lower().replace("@", "") == username:
+            return nome
+    return username
 
 # =====================
 # UTENTI ATTESI DAL MESSAGGIO
@@ -64,28 +43,21 @@ def extract_expected_users(text):
     return set(re.findall(r"@([a-zA-Z0-9_]+)", text.lower()))
 
 # =====================
-# DB FUNCTIONS
+# SUPABASE SAVE
 # =====================
-def save_response(date, user, status):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
+def save_response(date, username, status):
+    supabase.table("responses").upsert({
+        "date": date,
+        "username": username,
+        "status": status
+    }).execute()
 
-    c.execute("""
-    INSERT OR REPLACE INTO responses VALUES (?, ?, ?)
-    """, (date, user, status))
-
-    conn.commit()
-    conn.close()
-
+# =====================
+# SUPABASE GET
+# =====================
 def get_responses(date):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-
-    c.execute("SELECT user, status FROM responses WHERE date=?", (date,))
-    rows = c.fetchall()
-
-    conn.close()
-    return dict(rows)
+    res = supabase.table("responses").select("*").eq("date", date).execute()
+    return {r["username"]: r["status"] for r in res.data}
 
 # =====================
 # WEBHOOK
@@ -94,7 +66,6 @@ def get_responses(date):
 def webhook():
 
     data = request.get_json(silent=True)
-    print("UPDATE:", json.dumps(data, ensure_ascii=False), flush=True)
 
     if not data or "callback_query" not in data:
         return "ok", 200
@@ -105,14 +76,35 @@ def webhook():
     chat_id = cb["message"]["chat"]["id"]
     msg_id = cb["message"]["message_id"]
 
+    # username telegram
     username = cb["from"].get("username")
-
     if username:
-        username = username.lower().replace("@", "").strip()
+        username = username.lower()
     else:
         username = str(cb["from"]["id"])
 
     action, date = cb["data"].split("|")
+
+    text_message = cb["message"]["text"]
+
+    # =====================
+    # UTENTI ASSEGNATI
+    # =====================
+    expected_users = extract_expected_users(text_message)
+
+    # =====================
+    # BLOCCO NON ASSEGNATI
+    # =====================
+    if username not in expected_users:
+
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+            data={
+                "callback_query_id": cb_id,
+                "text": "Non sei assegnato a questo servizio 🚫"
+            }
+        )
+        return "ok", 200
 
     # =====================
     # SALVA RISPOSTA
@@ -121,20 +113,18 @@ def webhook():
 
     responses = get_responses(date)
 
-    # =====================
-    # UTENTI ATTESI (DAL MESSAGGIO)
-    # =====================
-    expected_users = extract_expected_users(cb["message"]["text"])
-
     responded_users = set(responses.keys())
     missing = expected_users - responded_users
 
     # =====================
-    # LISTA RISPOSTE
+    # LISTE NOMI
     # =====================
     ok_users = [to_name(u) for u, s in responses.items() if s == "ok"]
     no_users = [to_name(u) for u, s in responses.items() if s != "ok"]
 
+    # =====================
+    # MESSAGGIO
+    # =====================
     status_text = "\n\n📋 RISPOSTE\n\n"
 
     status_text += "✅ OK:\n"
@@ -146,7 +136,7 @@ def webhook():
     status_text += f"\n\n⏳ Mancano {len(missing)} risposte"
 
     # =====================
-    # CHIUSURA SOLO SE TUTTI HANNO RISPOSTO
+    # CHIUSURA AUTOMATICA
     # =====================
     if len(missing) == 0 and len(expected_users) > 0:
         keyboard = {"inline_keyboard": []}
@@ -160,9 +150,9 @@ def webhook():
         }
 
     # =====================
-    # UPDATE MESSAGGIO
+    # AGGIORNA MESSAGGIO
     # =====================
-    original = cb["message"]["text"]
+    original = text_message
 
     if "\n\n📋 RISPOSTE" in original:
         original = original.split("\n\n📋 RISPOSTE")[0]
@@ -190,12 +180,10 @@ def webhook():
 
     return "ok", 200
 
-# =====================
-# HEALTHCHECK
-# =====================
+
 @app.route("/", methods=["GET"])
 def home():
-    return "Webhook attivo", 200
+    return "OK", 200
 
 
 if __name__ == "__main__":

@@ -1,115 +1,181 @@
+from flask import Flask, request
 import os
 import json
 import requests
-from datetime import datetime
 
-# =====================
-# CONFIG
-# =====================
+app = Flask(__name__)
+
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-GET_UPDATES_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-ANSWER_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery"
-
 DB_FILE = "responses.json"
-OFFSET_FILE = "offset.json"
+EXPECTED_FILE = "expected_users.json"
 
 # =====================
-# LOAD RISPOSTE
+# LOAD DB
 # =====================
-if os.path.exists(DB_FILE):
-    with open(DB_FILE, "r") as f:
-        responses = json.load(f)
-else:
-    responses = {}
+def load_db():
+    try:
+        with open(DB_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
 
-# =====================
-# LOAD OFFSET
-# =====================
-if os.path.exists(OFFSET_FILE):
-    with open(OFFSET_FILE, "r") as f:
-        offset = json.load(f).get("offset", 0)
-else:
-    offset = 0
+def save_db(db):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(db, f, indent=2, ensure_ascii=False)
 
 # =====================
-# GET UPDATES
+# LOAD EXPECTED
 # =====================
-resp = requests.get(GET_UPDATES_URL, timeout=10)
-data = resp.json()
-
-updates = data.get("result", [])
-
-max_offset = offset
+def load_expected(date):
+    try:
+        with open(EXPECTED_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return set(data.get(date, []))
+    except:
+        return set()
 
 # =====================
-# LOOP UPDATES
+# WEBHOOK
 # =====================
-for update in updates:
+@app.route("/", methods=["POST"])
+def webhook():
 
-    update_id = update["update_id"]
+    data = request.get_json(silent=True)
 
-    if update_id <= offset:
-        continue
+    print("📩 UPDATE:", json.dumps(data, ensure_ascii=False), flush=True)
 
-    max_offset = max(max_offset, update_id)
+    if not data or "callback_query" not in data:
+        return "ok", 200
 
-    if "callback_query" not in update:
-        continue
-
-    cb = update["callback_query"]
+    cb = data["callback_query"]
 
     cb_id = cb["id"]
-    user = cb["from"]
-
-    callback_data = cb["data"]
-
-    # =====================
-    # PARSE CALLBACK
-    # =====================
-    try:
-        action, date = callback_data.split("|")
-    except:
-        continue
-
-    username = user.get("username")
-    user_key = f"@{username}" if username else str(user["id"])
+    chat_id = cb["message"]["chat"]["id"]
+    msg_id = cb["message"]["message_id"]
 
     # =====================
-    # 1. RISPOSTA IMMEDIATA (CRITICO)
+    # NORMALIZZA USERNAME (NO @)
     # =====================
+    username = cb["from"].get("username")
+
+    if username:
+        username = username.lower().strip()
+    else:
+        username = str(cb["from"]["id"])
+
+    action, date = cb["data"].split("|")
+
+    # =====================
+    # LOAD DB
+    # =====================
+    db = load_db()
+
+    if date not in db:
+        db[date] = {}
+
+    print("👤 USER:", username, flush=True)
+    print("📅 DATE:", date, flush=True)
+    print("⚡ ACTION:", action, flush=True)
+
+    # =====================
+    # BLOCCO DOPPIO CLICK
+    # =====================
+    if username in db[date]:
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+            data={
+                "callback_query_id": cb_id,
+                "text": "Hai già risposto 👍"
+            }
+        )
+        return "ok", 200
+
+    # =====================
+    # SALVA RISPOSTA
+    # =====================
+    db[date][username] = action
+    save_db(db)
+
+    # =====================
+    # EXPECTED USERS
+    # =====================
+    expected_users = load_expected(date)
+
+    responded_users = set(db[date].keys())
+
+    missing = expected_users - responded_users
+    remaining = len(missing)
+
+    print("📌 EXPECTED:", expected_users, flush=True)
+    print("📌 RESPONDED:", responded_users, flush=True)
+    print("📌 MISSING:", missing, flush=True)
+
+    # =====================
+    # RISPOSTE OK / NO
+    # =====================
+    ok_users = [u for u, s in db[date].items() if s == "ok"]
+    no_users = [u for u, s in db[date].items() if s != "ok"]
+
+    status_text = "\n\n📋 RISPOSTE\n\n"
+    status_text += "✅ OK:\n" + ("\n".join(ok_users) if ok_users else "-")
+    status_text += "\n\n❌ NON POSSO:\n" + ("\n".join(no_users) if no_users else "-")
+    status_text += f"\n\n⏳ Mancano {remaining} risposte"
+
+    # =====================
+    # BOTTONI
+    # =====================
+    if remaining == 0:
+        keyboard = {"inline_keyboard": []}
+        status_text += "\n\n🔒 Risposte chiuse"
+    else:
+        keyboard = {
+            "inline_keyboard": [[
+                {"text": "✅ OK", "callback_data": f"ok|{date}"},
+                {"text": "❌ NON POSSO", "callback_data": f"no|{date}"}
+            ]]
+        }
+
+    # =====================
+    # EDIT MESSAGGIO
+    # =====================
+    original = cb["message"]["text"]
+
+    if "\n\n📋 RISPOSTE" in original:
+        original = original.split("\n\n📋 RISPOSTE")[0]
+
     requests.post(
-        ANSWER_URL,
-        data={
-            "callback_query_id": cb_id,
-            "text": "✔ Salvato",
-            "show_alert": False
+        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
+        json={
+            "chat_id": chat_id,
+            "message_id": msg_id,
+            "text": original + status_text,
+            "reply_markup": keyboard
         }
     )
 
     # =====================
-    # 2. SALVATAGGIO RISPOSTA
+    # CALLBACK POPUP
     # =====================
-    if date not in responses:
-        responses[date] = {}
+    requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+        data={
+            "callback_query_id": cb_id,
+            "text": "Salvato ✔"
+        }
+    )
 
-    responses[date][user_key] = {
-        "status": action,
-        "updated_at": datetime.now().isoformat()
-    }
-
-    print(f"{user_key} -> {action} ({date})")
-
-# =====================
-# SAVE RISPOSTE
-# =====================
-with open(DB_FILE, "w") as f:
-    json.dump(responses, f, indent=2)
+    return "ok", 200
 
 # =====================
-# SAVE OFFSET
+# HEALTHCHECK
 # =====================
-with open(OFFSET_FILE, "w") as f:
-    json.dump({"offset": max_offset}, f, indent=2)
+@app.route("/", methods=["GET"])
+def home():
+    return "Webhook attivo", 200
 
-print("Receiver OK")
+# =====================
+# RUN
+# =====================
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

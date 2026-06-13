@@ -11,11 +11,9 @@ DB_FILE = "responses.json"
 RUBRICA_FILE = "rubrica.json"
 EXPECTED_FILE = "expected_users.json"
 
-=====================
-
-LOAD DB
-
-=====================
+#=====================
+#LOAD DB
+#=====================
 
 def load_db():
 try:
@@ -28,11 +26,9 @@ def save_db(db):
 with open(DB_FILE, "w", encoding="utf-8") as f:
 json.dump(db, f, indent=2, ensure_ascii=False)
 
-=====================
-
-RUBRICA
-
-=====================
+#=====================
+#RUBRICA
+#=====================
 
 def load_rubrica():
 try:
@@ -43,11 +39,9 @@ return {}
 
 rubrica = load_rubrica()
 
-=====================
-
-WEBHOOK
-
-=====================
+#=====================
+#WEBHOOK
+#=====================
 
 @app.route("/", methods=["POST"])
 def webhook():

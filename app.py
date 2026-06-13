@@ -8,11 +8,10 @@ app = Flask(__name__)
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 DB_FILE = "responses.json"
-EXPECTED_FILE = "expected_users.json"
 RUBRICA_FILE = "rubrica.json"
 
 # =====================
-# LOAD JSON
+# UTILS JSON
 # =====================
 def load_json(path):
     try:
@@ -39,7 +38,6 @@ def save_db(db):
 # =====================
 rubrica = load_json(RUBRICA_FILE)
 
-# username -> nome
 def to_name(username):
     username = str(username).lower().replace("@", "")
     for name, u in rubrica.items():
@@ -48,20 +46,13 @@ def to_name(username):
     return username
 
 # =====================
-# EXPECTED
-# =====================
-def load_expected(date):
-    data = load_json(EXPECTED_FILE)
-    return set(data.get(date, []))
-
-# =====================
 # WEBHOOK
 # =====================
 @app.route("/", methods=["POST"])
 def webhook():
 
     data = request.get_json(silent=True)
-    print("📩 UPDATE:", json.dumps(data, ensure_ascii=False), flush=True)
+    print("UPDATE:", json.dumps(data, ensure_ascii=False), flush=True)
 
     if not data or "callback_query" not in data:
         return "ok", 200
@@ -72,9 +63,6 @@ def webhook():
     chat_id = cb["message"]["chat"]["id"]
     msg_id = cb["message"]["message_id"]
 
-    # =====================
-    # USER NORMALIZZATO
-    # =====================
     username = cb["from"].get("username")
 
     if username:
@@ -84,16 +72,13 @@ def webhook():
 
     action, date = cb["data"].split("|")
 
-    # =====================
-    # LOAD DB
-    # =====================
     db = load_db()
 
     if date not in db:
         db[date] = {}
 
     # =====================
-    # BLOCCO DOPPIO CLICK
+    # BLOCCO SE HA GIÀ RISPOSTO
     # =====================
     if username in db[date]:
         requests.post(
@@ -109,46 +94,31 @@ def webhook():
     # SALVA RISPOSTA
     # =====================
     db[date][username] = action
-save_db(db)
+    save_db(db)
 
-print("USER:", username, flush=True)
-print("DATE:", date, flush=True)
-print("ACTION:", action, flush=True)
+    # =====================
+    # CALCOLO STATI
+    # =====================
+    responses = db[date]
 
-print("💾 PATH FILE:", os.path.abspath(DB_FILE), flush=True)
-
-try:
-    with open(DB_FILE, "r", encoding="utf-8") as f:
-        print("📖 LETTURA IMMEDIATA FILE:", f.read(), flush=True)
-except Exception as e:
-    print("ERRORE LETTURA FILE:", e, flush=True)
+    ok_users = [to_name(u) for u, s in responses.items() if s == "ok"]
+    no_users = [to_name(u) for u, s in responses.items() if s != "ok"]
 
     # =====================
     # LOAD EXPECTED
     # =====================
-    expected_users = load_expected(date)
-    responded_users = set(db[date].keys())
+    expected_file = "expected_users.json"
+    try:
+        with open(expected_file, "r", encoding="utf-8") as f:
+            expected = json.load(f)
+        expected_users = set(expected.get(date, []))
+    except:
+        expected_users = set()
 
-    missing = expected_users - responded_users
-    remaining = len(missing)
-
-    print("📌 EXPECTED:", expected_users)
-    print("📌 RESPONDED:", responded_users)
-    print("📌 MISSING:", missing)
-
-    # =====================
-    # OK / NO CON NOME UMANO
-    # =====================
-    ok_users = [
-        to_name(u) for u, s in db[date].items() if s == "ok"
-    ]
-
-    no_users = [
-        to_name(u) for u, s in db[date].items() if s != "ok"
-    ]
+    missing = expected_users - set(responses.keys())
 
     # =====================
-    # STATUS TEXT
+    # TESTO
     # =====================
     status_text = "\n\n📋 RISPOSTE\n\n"
 
@@ -158,12 +128,12 @@ except Exception as e:
     status_text += "\n\n❌ NON POSSO:\n"
     status_text += "\n".join(no_users) if no_users else "-"
 
-    status_text += f"\n\n⏳ Mancano {remaining} risposte"
+    status_text += f"\n\n⏳ Mancano {len(missing)} risposte"
 
     # =====================
     # BOTTONI
     # =====================
-    if remaining == 0:
+    if len(missing) == 0:
         keyboard = {"inline_keyboard": []}
         status_text += "\n\n🔒 Risposte chiuse"
     else:
@@ -175,7 +145,7 @@ except Exception as e:
         }
 
     # =====================
-    # UPDATE MESSAGE
+    # UPDATE MESSAGGIO
     # =====================
     original = cb["message"]["text"]
 
@@ -193,7 +163,7 @@ except Exception as e:
     )
 
     # =====================
-    # CALLBACK ANSWER
+    # POPUP
     # =====================
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",

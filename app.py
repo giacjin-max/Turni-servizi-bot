@@ -13,7 +13,7 @@ SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # =====================
-# RUBRICA (reverse mapping)
+# RUBRICA (reverse map)
 # =====================
 with open("rubrica.json", "r", encoding="utf-8") as f:
     rubrica = json.load(f)
@@ -28,18 +28,18 @@ def get_service_name(telegram_user):
     return reverse_rubrica.get(user, user)
 
 # =====================
-# SUPABASE SAVE
+# SAVE SUPABASE
 # =====================
-def save_response(date, service_name, status):
+def save_response(date, service_name):
 
     supabase.table("responses").upsert({
         "date": date,
         "username": service_name,
-        "status": status
+        "status": "ok"
     }, on_conflict="date,username").execute()
 
 # =====================
-# READ RESPONSES
+# READ
 # =====================
 def get_responses(date):
 
@@ -49,7 +49,7 @@ def get_responses(date):
         .execute().data
 
 # =====================
-# BUILD MESSAGE
+# BUILD MESSAGE (solo risposte)
 # =====================
 def build_message(original_text, responses):
 
@@ -57,7 +57,7 @@ def build_message(original_text, responses):
     msg = header
 
     for r in responses:
-        msg += f"• {r['username']} → {r['status']}\n"
+        msg += f"• {r['username']} → OK\n"
 
     return msg
 
@@ -78,13 +78,14 @@ def webhook():
     msg_id = cb["message"]["message_id"]
 
     telegram_user = cb["from"].get("username") or str(cb["from"]["id"])
-    action, date = cb["data"].split("|")
+    date = cb["data"].split("|")[1]
 
     service_name = get_service_name(telegram_user)
 
-    print("CLICK:", telegram_user, "→", service_name, action, date, flush=True)
+    print("CLICK:", telegram_user, "→", service_name, date, flush=True)
 
-    save_response(date, service_name, action)
+    # salva sempre OK
+    save_response(date, service_name)
 
     responses = get_responses(date)
 
@@ -101,10 +102,11 @@ def webhook():
 
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-        data={"callback_query_id": cb["id"], "text": "Salvato ✔"}
+        data={"callback_query_id": cb["id"], "text": "OK registrato ✔"}
     )
 
     return "ok", 200
+
 
 # =====================
 # START

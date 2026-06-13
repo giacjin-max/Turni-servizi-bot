@@ -134,8 +134,8 @@ print("MISSING:", expected_users - responded_users)
     # =====================
     # RISPOSTE
     # =====================
-    ok_users = []
-    no_users = []
+ok_users = []
+no_users = []
 
     for user, status in db[date].items():
 

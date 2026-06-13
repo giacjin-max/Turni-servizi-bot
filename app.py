@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+import pandas as pd
 from flask import Flask, request
 from supabase import create_client
 
@@ -13,7 +14,7 @@ SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # =====================
-# RUBRICA (reverse map)
+# RUBRICA (telegram → servizio)
 # =====================
 with open("rubrica.json", "r", encoding="utf-8") as f:
     rubrica = json.load(f)
@@ -28,7 +29,7 @@ def get_service_name(telegram_user):
     return reverse_rubrica.get(user, user)
 
 # =====================
-# SAVE SUPABASE
+# SUPABASE SAVE
 # =====================
 def save_response(date, service_name):
 
@@ -39,25 +40,48 @@ def save_response(date, service_name):
     }, on_conflict="date,username").execute()
 
 # =====================
-# READ
+# GET RESPONSES
 # =====================
 def get_responses(date):
 
-    return supabase.table("responses") \
+    res = supabase.table("responses") \
         .select("*") \
         .eq("date", date) \
-        .execute().data
+        .execute()
+
+    return res.data
 
 # =====================
-# BUILD MESSAGE (solo risposte)
+# BUILD MESSAGE (Excel base + Supabase overlay)
 # =====================
-def build_message(original_text, responses):
+def build_message(riga, status_map):
 
-    header = original_text.split("\n")[0] + "\n\n"
-    msg = header
+    msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
 
-    for r in responses:
-        msg += f"• {r['username']} → OK\n"
+    for col in riga.index:
+        if col == "Data":
+            continue
+
+        value = riga[col]
+
+        if pd.isna(value):
+            continue
+
+        nomi = str(value).replace(";", ",").split(",")
+
+        msg += f"• {col}\n"
+
+        for nome in nomi:
+            nome = nome.strip()
+            if not nome:
+                continue
+
+            if nome in status_map:
+                msg += f"    {nome} → OK\n"
+            else:
+                msg += f"    {nome}\n"
+
+        msg += "\n"
 
     return msg
 
@@ -84,13 +108,29 @@ def webhook():
 
     print("CLICK:", telegram_user, "→", service_name, date, flush=True)
 
-    # salva sempre OK
+    # salva risposta
     save_response(date, service_name)
 
+    # leggi excel (base struttura)
+    df = pd.read_excel("turni.xlsx")
+    df = df[df["Data"].notna()].copy()
+    df["Data"] = pd.to_datetime(df["Data"])
+    df = df.sort_values("Data")
+
+    riga = df.iloc[0]
+
+    # leggi supabase
     responses = get_responses(date)
 
-    new_text = build_message(cb["message"]["text"], responses)
+    status_map = {
+        r["username"]: r["status"]
+        for r in responses
+    }
 
+    # costruisci messaggio
+    new_text = build_message(riga, status_map)
+
+    # aggiorna telegram
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
         json={
@@ -100,9 +140,13 @@ def webhook():
         }
     )
 
+    # risposta click
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-        data={"callback_query_id": cb["id"], "text": "OK registrato ✔"}
+        data={
+            "callback_query_id": cb["id"],
+            "text": "OK registrato ✔"
+        }
     )
 
     return "ok", 200
@@ -122,3 +166,4 @@ def test_sender():
 # =====================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+

@@ -87,7 +87,7 @@ def webhook():
             return "ok", 200
 
         # ---------------------
-        # SEND MANUALE (SICURO)
+        # MANUAL SEND (SAFE)
         # ---------------------
         if text == "/send":
 
@@ -95,7 +95,6 @@ def webhook():
                 import sender
                 sender.send()
                 msg = "🚀 Sender eseguito con successo"
-
             except Exception as e:
                 msg = f"❌ Errore sender: {str(e)}"
 

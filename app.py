@@ -67,21 +67,43 @@ def webhook():
         return "ok", 200
 
     # =====================
-    # COMMANDI TESTO (TEST / SEND)
+    # COMANDI TESTO
     # =====================
     if "message" in data and "text" in data["message"]:
 
         text = data["message"]["text"]
         chat_id = data["message"]["chat"]["id"]
 
+        # =====================
+        # TEST BOT
+        # =====================
         if text == "/test":
             requests.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                 json={
                     "chat_id": chat_id,
-                    "text": "🧪 Test OK: il bot funziona"
+                    "text": "🧪 Test OK"
                 }
             )
+            return "ok", 200
+
+        # =====================
+        # RUN MANUALE SENDER
+        # =====================
+        if text == "/send":
+
+            import sender  # sender.py deve avere def send()
+
+            sender.send()
+
+            requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": "🚀 Sender eseguito manualmente"
+                }
+            )
+
             return "ok", 200
 
     # =====================

@@ -189,64 +189,29 @@ def run_reminder():
 # REMINDER TUTTI
 # =====================
 
-def reminder_domani():
+def reminder_sabato():
 
-    import pandas as pd
+    import requests
+    import os
 
-    df = pd.read_excel("turni.xlsx")
+    BOT_TOKEN = os.environ["BOT_TOKEN"]
+    CHAT_ID = os.environ["CHAT_ID"]
 
-    if df.empty:
-        return
-
-    df = df[df["Data"].notna()].copy()
-    df["Data"] = pd.to_datetime(df["Data"])
-    df = df.sort_values("Data")
-
-    riga = df.iloc[0]
-    date = riga["Data"].strftime("%Y-%m-%d")
-
-    msg = "📢 PROMEMORIA DOMANI:\n\n"
-    msg += "Non dimenticare i tuoi servizi per domani 👇\n\n"
-
-    # =====================
-    # ESTRAI TUTTI
-    # =====================
-    all_users = set()
-
-    for col in df.columns:
-        if col == "Data":
-            continue
-
-        value = riga[col]
-        if pd.isna(value):
-            continue
-
-        for nome in str(value).replace(";", ",").split(","):
-            nome = nome.strip()
-            if nome:
-                all_users.add(nome)
-
-    msg += "👥 Coinvolti:\n"
-
-    for u in all_users:
-        msg += f"• {to_tag(u)}\n"
-
-    keyboard = {
-        "inline_keyboard": [[
-            {"text": "✅ OK", "callback_data": f"ok|{date}"}
-        ]]
-    }
+    msg = (
+        "📢 PROMEMORIA SERVIZIO\n\n"
+        "Domani c’è il servizio.\n"
+        "Controlla i turni e preparati per il tuo incarico."
+    )
 
     requests.post(
-        url,
+        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
         json={
             "chat_id": CHAT_ID,
-            "text": msg,
-            "reply_markup": keyboard
+            "text": msg
         }
     )
 
-    print("📢 PROMEMORIA DOMENICA INVIATO")
+    print("📢 Reminder sabato inviato")
     
 # =====================
 # SCHEDULER
@@ -260,7 +225,7 @@ scheduler.add_job(send, "cron", day_of_week="mon", hour=9, minute=0)
 scheduler.add_job(run_reminder, "cron", day_of_week="thu", hour=9, minute=0)
 
 # 📢 Sabato
-scheduler.add_job(reminder_domani, "cron", day_of_week="sat", hour=10, minute=0)
+scheduler.add_job(reminder_sabato, "cron", day_of_week="sat", hour=10, minute=0)
 
 scheduler.start()
 

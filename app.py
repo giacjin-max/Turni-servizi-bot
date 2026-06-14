@@ -65,9 +65,9 @@ def webhook():
     if not data:
         return "ok", 200
 
-    # =====================
-    # COMANDI
-    # =====================
+        # =====================
+        # COMANDI
+        # =====================
     if "message" in data and "text" in data["message"]:
 
         text = data["message"]["text"]
@@ -77,8 +77,35 @@ def webhook():
         if text == "/test":
             requests.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                json={"chat_id": chat_id, "text": "🧪 Bot OK"}
+                json={
+                    "chat_id": chat_id,
+                    "text": "🧪 Bot OK"
+                }
             )
+            return "ok", 200
+
+        # SEND MANUALE
+        if text == "/send":
+
+            try:
+                import sender
+
+                sender.send()
+
+                msg = "🚀 Turni inviati con successo"
+
+            except Exception as e:
+
+                msg = f"❌ Errore sender:\n{str(e)}"
+
+            requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": msg
+                }
+            )
+
             return "ok", 200
 
         return "ok", 200

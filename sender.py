@@ -2,7 +2,7 @@ import os
 import json
 import pandas as pd
 import requests
-from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
@@ -64,7 +64,7 @@ def build_message():
     return msg, date, keyboard
 
 # =====================
-# INVIO
+# INVIO (FUNZIONE IMPORTANTE)
 # =====================
 def send():
     msg, date, keyboard = build_message()
@@ -83,23 +83,22 @@ def send():
     print("TURNI INVIATI")
 
 # =====================
-# SCHEDULER AUTOMATICO
+# SCHEDULER
 # =====================
-scheduler = BlockingScheduler()
+scheduler = BackgroundScheduler()
 
-# 📅 Lunedì - invio turni
+# 📅 Lunedì
 scheduler.add_job(send, "cron", day_of_week="mon", hour=9, minute=0)
 
-# ⏳ Giovedì - reminder
+# ⏳ Giovedì
 scheduler.add_job(send, "cron", day_of_week="thu", hour=9, minute=0)
 
-# 📢 Sabato - promemoria domenica
+# 📢 Sabato
 scheduler.add_job(send, "cron", day_of_week="sat", hour=10, minute=0)
 
 # =====================
-# MAIN
+# START SCHEDULER
 # =====================
-if __name__ == "__main__":
-    print("🚀 Sender attivo (auto + manuale)")
+scheduler.start()
 
-    scheduler.start()
+print("🚀 Sender attivo (auto + manuale ready)")

@@ -160,7 +160,6 @@ def run_reminder():
     # UI AGGIORNATA
     # =====================
     text = "📅 TURNI (AGGIORNATO)\n\n"
-
     text += "📋 RISPOSTE:\n\n"
 
     for u in expected_users:
@@ -170,7 +169,7 @@ def run_reminder():
         if u in responded_users:
             text += f"🟢 {name}\n"
         else:
-            text += f"🔴 {name}\n"
+            text += f"{name}\n"
 
     # =====================
     # UPDATE MESSAGGIO MASTER

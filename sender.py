@@ -139,6 +139,69 @@ def run_reminder():
     reminder(date, expected_users, CHAT_ID)
 
 # =====================
+# REMINDER TUTTI
+# =====================
+
+def reminder_domani():
+
+    import pandas as pd
+
+    df = pd.read_excel("turni.xlsx")
+
+    if df.empty:
+        return
+
+    df = df[df["Data"].notna()].copy()
+    df["Data"] = pd.to_datetime(df["Data"])
+    df = df.sort_values("Data")
+
+    riga = df.iloc[0]
+    date = riga["Data"].strftime("%Y-%m-%d")
+
+    msg = "📢 PROMEMORIA DOMANI:\n\n"
+    msg += "Non dimenticare i tuoi servizi per domani 👇\n\n"
+
+    # =====================
+    # ESTRAI TUTTI
+    # =====================
+    all_users = set()
+
+    for col in df.columns:
+        if col == "Data":
+            continue
+
+        value = riga[col]
+        if pd.isna(value):
+            continue
+
+        for nome in str(value).replace(";", ",").split(","):
+            nome = nome.strip()
+            if nome:
+                all_users.add(nome)
+
+    msg += "👥 Coinvolti:\n"
+
+    for u in all_users:
+        msg += f"• {to_tag(u)}\n"
+
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "✅ OK", "callback_data": f"ok|{date}"}
+        ]]
+    }
+
+    requests.post(
+        url,
+        json={
+            "chat_id": CHAT_ID,
+            "text": msg,
+            "reply_markup": keyboard
+        }
+    )
+
+    print("📢 PROMEMORIA DOMENICA INVIATO")
+    
+# =====================
 # SCHEDULER
 # =====================
 scheduler = BackgroundScheduler()
@@ -150,7 +213,7 @@ scheduler.add_job(send, "cron", day_of_week="mon", hour=9, minute=0)
 scheduler.add_job(run_reminder, "cron", day_of_week="thu", hour=9, minute=0)
 
 # 📢 Sabato
-scheduler.add_job(send, "cron", day_of_week="sat", hour=10, minute=0)
+scheduler.add_job(reminder_domani, "cron", day_of_week="sat", hour=10, minute=0)
 
 scheduler.start()
 

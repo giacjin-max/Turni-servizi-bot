@@ -112,6 +112,18 @@ def run_reminder():
 
     import pandas as pd
 
+    master = get_master_message()
+    if not master:
+        print("Nessun messaggio master trovato")
+        return
+
+    chat_id = master["chat_id"]
+    message_id = master["message_id"]
+    date = master["date"]
+
+    # =====================
+    # EXCEL
+    # =====================
     df = pd.read_excel("turni.xlsx")
 
     df = df[df["Data"].notna()].copy()
@@ -119,7 +131,6 @@ def run_reminder():
     df = df.sort_values("Data")
 
     riga = df.iloc[0]
-    date = riga["Data"].strftime("%Y-%m-%d")
 
     expected_users = set()
 
@@ -136,7 +147,44 @@ def run_reminder():
             if nome:
                 expected_users.add(nome)
 
-    reminder(date, expected_users, CHAT_ID)
+    # =====================
+    # SUPABASE
+    # =====================
+    res = supabase.table("responses").select("*").eq("date", date).execute()
+
+    responded_users = {
+        r["username"] for r in res.data if r["status"] == "ok"
+    }
+
+    # =====================
+    # UI AGGIORNATA
+    # =====================
+    text = "📅 TURNI (AGGIORNATO)\n\n"
+
+    text += "📋 RISPOSTE:\n\n"
+
+    for u in expected_users:
+
+        name = to_tag(u)
+
+        if u in responded_users:
+            text += f"🟢 {name}\n"
+        else:
+            text += f"🔴 {name}\n"
+
+    # =====================
+    # UPDATE MESSAGGIO MASTER
+    # =====================
+    requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
+        json={
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text
+        }
+    )
+
+    print("🔄 Messaggio master aggiornato (reminder live)")
 
 # =====================
 # REMINDER TUTTI

@@ -73,22 +73,15 @@ def webhook():
         text = data["message"]["text"]
         chat_id = data["message"]["chat"]["id"]
 
-        # ---------------------
-        # TEST
-        # ---------------------
+        # /test
         if text == "/test":
             requests.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": "🧪 Test OK"
-                }
+                json={"chat_id": chat_id, "text": "🧪 Test OK"}
             )
             return "ok", 200
 
-        # ---------------------
-        # MANUAL SEND (SAFE)
-        # ---------------------
+        # /send
         if text == "/send":
 
             try:
@@ -100,10 +93,7 @@ def webhook():
 
             requests.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": msg
-                }
+                json={"chat_id": chat_id, "text": msg}
             )
 
             return "ok", 200
@@ -135,10 +125,7 @@ def webhook():
     if username not in expected_users:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-            data={
-                "callback_query_id": cb_id,
-                "text": "Non sei assegnato 🚫"
-            }
+            data={"callback_query_id": cb_id, "text": "Non sei assegnato 🚫"}
         )
         return "ok", 200
 
@@ -154,12 +141,30 @@ def webhook():
     save_response(date, username, action)
 
     responses = get_responses(date)
-    responded_users = set(responses.keys())
+
+    responded_users = {
+        user for user, status in responses.items() if status == "ok"
+    }
 
     # =====================
-    # KEYBOARD
+    # UI NOMI + 🟢 (GLOBAL STATE)
     # =====================
-    if username in responded_users and responses[username] == "ok":
+    all_users = list(expected_users)
+
+    status_text = "\n\n📋 RISPOSTE\n\n"
+
+    for u in all_users:
+        name = to_name(u)
+
+        if u in responded_users:
+            status_text += f"{name} 🟢\n"
+        else:
+            status_text += f"{name}\n"
+
+    # =====================
+    # KEYBOARD (COERENTE)
+    # =====================
+    if username in responded_users:
         keyboard = {
             "inline_keyboard": [[
                 {"text": "🟢 Confermato", "callback_data": "noop"}
@@ -171,21 +176,6 @@ def webhook():
                 {"text": "✅ OK", "callback_data": f"ok|{date}"}
             ]]
         }
-
-    # =====================
-    # UI NOMI + 🟢
-    # =====================
-    all_users = list(expected_users)
-
-    status_text = "\n\n📋 RISPOSTE\n\n"
-
-    for u in all_users:
-        name = to_name(u)
-
-        if u in responded_users and responses[u] == "ok":
-            status_text += f"{name} 🟢\n"
-        else:
-            status_text += f"{name}\n"
 
     # =====================
     # UPDATE MESSAGE
@@ -207,10 +197,7 @@ def webhook():
 
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-        data={
-            "callback_query_id": cb_id,
-            "text": "Salvato ✔"
-        }
+        data={"callback_query_id": cb_id, "text": "Salvato ✔"}
     )
 
     return "ok", 200

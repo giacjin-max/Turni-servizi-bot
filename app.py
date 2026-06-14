@@ -151,6 +151,27 @@ def webhook():
         return "ok", 200
 
     # =====================
+    # BLOCCO DOPPIO CLICK
+    # =====================
+    responses = get_responses(date)
+
+    responded_users = {
+        u for u, s in responses.items() if s == "ok"
+    }
+
+    if username in responded_users:
+
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+            data={
+                "callback_query_id": cb_id,
+                "text": "Hai già confermato ✔"
+            }
+        )
+
+        return "ok", 200
+
+    # =====================
     # SALVA RISPOSTA
     # =====================
     save_response(date, username, action)
@@ -174,15 +195,14 @@ def webhook():
         else:
             status_text += f"{name}\n"
 
-        
-     # =====================
-     # KEYBOARD
-     # =====================
-     keyboard = {
-         "inline_keyboard": [[
-             {"text": "✅ OK", "callback_data": f"ok|{date}"}
-         ]]
-        }
+    # =====================
+    # KEYBOARD
+    # =====================
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "✅ OK", "callback_data": f"ok|{date}"}
+        ]]
+    }
 
     # =====================
     # UPDATE MESSAGGIO

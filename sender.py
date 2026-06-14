@@ -2,20 +2,14 @@ import os
 import json
 import pandas as pd
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
-from supabase import create_client
 
 # =====================
 # CONFIG
 # =====================
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
-
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_KEY"]
-
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
@@ -29,44 +23,25 @@ def to_tag(name):
     return rubrica.get(name, name)
 
 # =====================
-# EXCEL + PROSSIMO TURNO
+# BUILD MESSAGGIO
 # =====================
-def get_next_shift():
+def build_message():
     df = pd.read_excel("turni.xlsx")
+
+    if df.empty:
+        raise Exception("Excel vuoto: nessun turno trovato")
 
     df = df[df["Data"].notna()].copy()
     df["Data"] = pd.to_datetime(df["Data"])
     df = df.sort_values("Data")
 
-    today = datetime.now()
-
-    future = df[df["Data"] >= today]
-
-    if future.empty:
-        return None
-
-    return future.iloc[0]
-
-# =====================
-# CHECK DUPLICATI
-# =====================
-def already_sent(date):
-    res = supabase.table("sent_logs").select("*").eq("date", date).execute()
-    return len(res.data) > 0
-
-def mark_sent(date):
-    supabase.table("sent_logs").insert({"date": date}).execute()
-
-# =====================
-# BUILD MESSAGGIO
-# =====================
-def build_message(riga):
+    riga = df.iloc[0]
     date = riga["Data"].strftime("%Y-%m-%d")
 
     msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
     msg += "👉 Premi OK quando hai visto il turno\n\n"
 
-    for col in riga.index:
+    for col in df.columns:
         if col == "Data":
             continue
 
@@ -94,23 +69,13 @@ def build_message(riga):
     return msg, date, keyboard
 
 # =====================
-# INVIO PRINCIPALE
+# INVIO PRINCIPALE (FIXED)
 # =====================
 def send():
-    riga = get_next_shift()
 
-    if riga is None:
-        print("❌ Nessun turno futuro")
-        return
+    msg, date, keyboard = build_message()
 
-    date = riga["Data"].strftime("%Y-%m-%d")
-
-    # anti duplicato
-    if already_sent(date):
-        print("⚠️ Turno già inviato:", date)
-        return
-
-    msg, date, keyboard = build_message(riga)
+    print("📤 INVIO TURNI IN CORSO...")
 
     res = requests.post(
         url,
@@ -121,45 +86,39 @@ def send():
         }
     )
 
-    mark_sent(date)
+    print("STATUS:", res.status_code)
+    print("RESPONSE:", res.text)
 
-    print("🚀 TURNI INVIATI:", date)
+    # =====================
+    # CHECK ERRORI REALI
+    # =====================
+    if res.status_code != 200:
+        raise Exception(f"Telegram error: {res.text}")
 
-# =====================
-# REMINDER SOLO NON RISPOSTI
-# =====================
-def reminder():
+    try:
+        data = res.json()
+    except:
+        raise Exception("Risposta Telegram non valida")
 
-    res = supabase.table("responses").select("*").execute()
-    responses = res.data
+    if not data.get("ok"):
+        raise Exception(f"Telegram refused message: {data}")
 
-    # qui puoi personalizzare reminder
-    msg = "⏳ Reminder: alcuni non hanno ancora risposto ai turni"
-
-    requests.post(
-        url,
-        data={
-            "chat_id": CHAT_ID,
-            "text": msg
-        }
-    )
-
-    print("🔔 REMINDER INVIATO")
+    print("✅ TURNI INVIATI CORRETTAMENTE:", date)
 
 # =====================
 # SCHEDULER
 # =====================
 scheduler = BackgroundScheduler()
 
-# 📅 Lunedì → invio turni
+# 📅 Lunedì
 scheduler.add_job(send, "cron", day_of_week="mon", hour=9, minute=0)
 
-# ⏳ Giovedì → reminder
-scheduler.add_job(reminder, "cron", day_of_week="thu", hour=9, minute=0)
+# ⏳ Giovedì
+scheduler.add_job(send, "cron", day_of_week="thu", hour=9, minute=0)
 
-# 📢 Sabato → promemoria
-scheduler.add_job(reminder, "cron", day_of_week="sat", hour=10, minute=0)
+# 📢 Sabato
+scheduler.add_job(send, "cron", day_of_week="sat", hour=10, minute=0)
 
 scheduler.start()
 
-print("🚀 Sender PRO attivo")
+print("🚀 Sender ATTIVO (auto + manuale OK)")

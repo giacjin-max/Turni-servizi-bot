@@ -1,5 +1,6 @@
-supabase
 flask
 requests
 pandas
 openpyxl
+supabase
+apscheduler

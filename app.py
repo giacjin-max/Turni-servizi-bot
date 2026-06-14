@@ -66,113 +66,108 @@ def webhook():
     if not data:
         return "ok", 200
 
+    if "callback_query" not in data:
+        return "ok", 200
+
+    cb = data["callback_query"]
+
+    cb_id = cb["id"]
+    chat_id = cb["message"]["chat"]["id"]
+    msg_id = cb["message"]["message_id"]
+
+    username = cb["from"].get("username") or str(cb["from"]["id"])
+    username = username.lower()
+
+    action, date = cb["data"].split("|")
+
+    text_message = cb["message"]["text"]
+
+    expected_users = extract_expected_users(text_message)
+
     # =====================
-    # CALLBACK QUERY
+    # BLOCCO NON ASSEGNATI
     # =====================
-    if "callback_query" in data:
-
-        cb = data["callback_query"]
-
-        cb_id = cb["id"]
-        chat_id = cb["message"]["chat"]["id"]
-        msg_id = cb["message"]["message_id"]
-
-        username = cb["from"].get("username") or str(cb["from"]["id"])
-        username = username.lower()
-
-        action, date = cb["data"].split("|")
-
-        text_message = cb["message"]["text"]
-
-        expected_users = extract_expected_users(text_message)
-
-        # =====================
-        # BLOCCO NON ASSEGNATI
-        # =====================
-        if username not in expected_users:
-
-            requests.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-                data={
-                    "callback_query_id": cb_id,
-                    "text": "Non sei assegnato 🚫"
-                }
-            )
-            return "ok", 200
-
-        # =====================
-        # NOOP
-        # =====================
-        if action == "noop":
-            return "ok", 200
-
-        # =====================
-        # SAVE RESPONSE
-        # =====================
-        save_response(date, username, action)
-
-        responses = get_responses(date)
-responded_users = set(responses.keys())
-
-# =====================
-# KEYBOARD PRO
-# =====================
-if username in responded_users and responses[username] == "ok":
-    keyboard = {
-        "inline_keyboard": [[
-            {"text": "🟢 Confermato", "callback_data": "noop"}
-        ]]
-    }
-else:
-    keyboard = {
-        "inline_keyboard": [[
-            {"text": "✅ OK", "callback_data": f"ok|{date}"}
-        ]]
-    }
-
-# =====================
-# UI SOLO NOMI + 🟢
-# =====================
-all_users = list(expected_users)
-
-status_text = "\n\n📋 RISPOSTE\n\n"
-
-for u in all_users:
-    name = to_name(u)
-
-    if u in responded_users and responses[u] == "ok":
-        status_text += f"{name} 🟢\n"
-    else:
-        status_text += f"{name}\n"
-
-        # =====================
-        # UPDATE MESSAGE
-        # =====================
-        original = text_message
-
-        if "\n\n📋 RISPOSTE" in original:
-            original = original.split("\n\n📋 RISPOSTE")[0]
-
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
-            json={
-                "chat_id": chat_id,
-                "message_id": msg_id,
-                "text": original + status_text,
-                "reply_markup": keyboard
-            }
-        )
-
-        # callback ack
+    if username not in expected_users:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
             data={
                 "callback_query_id": cb_id,
-                "text": "Salvato ✔"
+                "text": "Non sei assegnato 🚫"
             }
         )
-
         return "ok", 200
+
+    # =====================
+    # NOOP
+    # =====================
+    if action == "noop":
+        return "ok", 200
+
+    # =====================
+    # SAVE RESPONSE
+    # =====================
+    save_response(date, username, action)
+
+    responses = get_responses(date)
+    responded_users = set(responses.keys())
+
+    # =====================
+    # KEYBOARD PRO
+    # =====================
+    if username in responded_users and responses[username] == "ok":
+        keyboard = {
+            "inline_keyboard": [[
+                {"text": "🟢 Confermato", "callback_data": "noop"}
+            ]]
+        }
+    else:
+        keyboard = {
+            "inline_keyboard": [[
+                {"text": "✅ OK", "callback_data": f"ok|{date}"}
+            ]]
+        }
+
+    # =====================
+    # UI SOLO NOMI + 🟢
+    # =====================
+    all_users = list(expected_users)
+
+    status_text = "\n\n📋 RISPOSTE\n\n"
+
+    for u in all_users:
+        name = to_name(u)
+
+        if u in responded_users and responses[u] == "ok":
+            status_text += f"{name} 🟢\n"
+        else:
+            status_text += f"{name}\n"
+
+    # =====================
+    # UPDATE MESSAGE
+    # =====================
+    original = text_message
+
+    if "\n\n📋 RISPOSTE" in original:
+        original = original.split("\n\n📋 RISPOSTE")[0]
+
+    requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
+        json={
+            "chat_id": chat_id,
+            "message_id": msg_id,
+            "text": original + status_text,
+            "reply_markup": keyboard
+        }
+    )
+
+    # callback ack
+    requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+        data={
+            "callback_query_id": cb_id,
+            "text": "Salvato ✔"
+        }
+    )
 
     return "ok", 200
 

@@ -2,6 +2,7 @@ import os
 import json
 import pandas as pd
 import requests
+from apscheduler.schedulers.blocking import BlockingScheduler
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
@@ -18,64 +19,87 @@ def to_tag(name):
     return rubrica.get(name, name)
 
 # =====================
-# EXCEL
+# BUILD MESSAGGIO
 # =====================
-df = pd.read_excel("turni.xlsx")
-df = df[df["Data"].notna()].copy()
-df["Data"] = pd.to_datetime(df["Data"])
-df = df.sort_values("Data")
+def build_message():
+    df = pd.read_excel("turni.xlsx")
 
-riga = df.iloc[0]
-date = riga["Data"].strftime("%Y-%m-%d")
+    df = df[df["Data"].notna()].copy()
+    df["Data"] = pd.to_datetime(df["Data"])
+    df = df.sort_values("Data")
 
-# =====================
-# MESSAGGIO
-# =====================
-msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
-msg += "👉 Premi OK quando hai visto il turno\n\n"
+    riga = df.iloc[0]
+    date = riga["Data"].strftime("%Y-%m-%d")
 
-for col in df.columns:
-    if col == "Data":
-        continue
+    msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
+    msg += "👉 Premi OK quando hai visto il turno\n\n"
 
-    value = riga[col]
-    if pd.isna(value):
-        continue
-
-    nomi = str(value).replace(";", ",").split(",")
-
-    msg += f"• {col}\n"
-
-    for nome in nomi:
-        nome = nome.strip()
-        if not nome:
+    for col in df.columns:
+        if col == "Data":
             continue
 
-        msg += f"    {to_tag(nome)}\n"
+        value = riga[col]
+        if pd.isna(value):
+            continue
 
-    msg += "\n"
+        nomi = str(value).replace(";", ",").split(",")
 
-# =====================
-# SOLO TASTO OK
-# =====================
-keyboard = {
-    "inline_keyboard": [[
-        {"text": "✅ OK", "callback_data": f"ok|{date}"}
-    ]]
-}
+        msg += f"• {col}\n"
+
+        for nome in nomi:
+            nome = nome.strip()
+            if not nome:
+                continue
+
+            msg += f"    {to_tag(nome)}\n"
+
+        msg += "\n"
+
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "✅ OK", "callback_data": f"ok|{date}"}
+        ]]
+    }
+
+    return msg, date, keyboard
 
 # =====================
 # INVIO
 # =====================
-res = requests.post(
-    url,
-    data={
-        "chat_id": CHAT_ID,
-        "text": msg,
-        "reply_markup": json.dumps(keyboard)
-    }
-)
+def send():
+    msg, date, keyboard = build_message()
 
-print("STATUS:", res.status_code)
-print("DATA:", date)
-print("TURNI INVIATI")
+    res = requests.post(
+        url,
+        data={
+            "chat_id": CHAT_ID,
+            "text": msg,
+            "reply_markup": json.dumps(keyboard)
+        }
+    )
+
+    print("STATUS:", res.status_code)
+    print("DATA:", date)
+    print("TURNI INVIATI")
+
+# =====================
+# SCHEDULER AUTOMATICO
+# =====================
+scheduler = BlockingScheduler()
+
+# 📅 Lunedì - invio turni
+scheduler.add_job(send, "cron", day_of_week="mon", hour=9, minute=0)
+
+# ⏳ Giovedì - reminder
+scheduler.add_job(send, "cron", day_of_week="thu", hour=9, minute=0)
+
+# 📢 Sabato - promemoria domenica
+scheduler.add_job(send, "cron", day_of_week="sat", hour=10, minute=0)
+
+# =====================
+# MAIN
+# =====================
+if __name__ == "__main__":
+    print("🚀 Sender attivo (auto + manuale)")
+
+    scheduler.start()

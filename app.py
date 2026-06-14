@@ -112,18 +112,12 @@ def webhook():
         save_response(date, username, action)
 
         responses = get_responses(date)
-        responded_users = set(responses.keys())
+responded_users = set(responses.keys())
 
-        # =====================
-        # KEYBOARD PRO
-        # =====================
-        if username in responded_users and responses[username] == "ok":
-            keyboard = {
-                "inline_keyboard": [[
-                    {"text": "✔ Risposta registrata", "callback_data": "noop"}
-                ]]
-            }
-        if username in responded_users and responses[username] == "ok":
+# =====================
+# KEYBOARD PRO
+# =====================
+if username in responded_users and responses[username] == "ok":
     keyboard = {
         "inline_keyboard": [[
             {"text": "🟢 Confermato", "callback_data": "noop"}
@@ -135,6 +129,21 @@ else:
             {"text": "✅ OK", "callback_data": f"ok|{date}"}
         ]]
     }
+
+# =====================
+# UI SOLO NOMI + 🟢
+# =====================
+all_users = list(expected_users)
+
+status_text = "\n\n📋 RISPOSTE\n\n"
+
+for u in all_users:
+    name = to_name(u)
+
+    if u in responded_users and responses[u] == "ok":
+        status_text += f"{name} 🟢\n"
+    else:
+        status_text += f"{name}\n"
 
         # =====================
         # UPDATE MESSAGE

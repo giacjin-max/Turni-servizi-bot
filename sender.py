@@ -106,6 +106,39 @@ def send():
     print("✅ TURNI INVIATI CORRETTAMENTE:", date)
 
 # =====================
+# REMINDER ( SOLO NON RISPOSTI)
+# =====================
+def run_reminder():
+
+    import pandas as pd
+
+    df = pd.read_excel("turni.xlsx")
+
+    df = df[df["Data"].notna()].copy()
+    df["Data"] = pd.to_datetime(df["Data"])
+    df = df.sort_values("Data")
+
+    riga = df.iloc[0]
+    date = riga["Data"].strftime("%Y-%m-%d")
+
+    expected_users = set()
+
+    for col in df.columns:
+        if col == "Data":
+            continue
+
+        value = riga[col]
+        if pd.isna(value):
+            continue
+
+        for nome in str(value).replace(";", ",").split(","):
+            nome = nome.strip().lower()
+            if nome:
+                expected_users.add(nome)
+
+    reminder(date, expected_users, CHAT_ID)
+
+# =====================
 # SCHEDULER
 # =====================
 scheduler = BackgroundScheduler()

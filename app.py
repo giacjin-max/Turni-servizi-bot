@@ -58,6 +58,23 @@ def get_responses(date):
 # =====================
 # WEBHOOK
 # =====================
+if "message" in data and "text" in data["message"]:
+    text = data["message"]["text"]
+    chat_id = data["message"]["chat"]["id"]
+
+    # =====================
+    # TEST MESSAGGIO
+    # =====================
+    if text == "/test":
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={
+                "chat_id": chat_id,
+                "text": "🧪 Test OK: il bot funziona"
+            }
+        )
+        return "ok", 200
+        
 @app.route("/", methods=["POST"])
 def webhook():
 

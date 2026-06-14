@@ -58,23 +58,6 @@ def get_responses(date):
 # =====================
 # WEBHOOK
 # =====================
-if "message" in data and "text" in data["message"]:
-    text = data["message"]["text"]
-    chat_id = data["message"]["chat"]["id"]
-
-    # =====================
-    # TEST MESSAGGIO
-    # =====================
-    if text == "/test":
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": "🧪 Test OK: il bot funziona"
-            }
-        )
-        return "ok", 200
-        
 @app.route("/", methods=["POST"])
 def webhook():
 
@@ -83,6 +66,27 @@ def webhook():
     if not data:
         return "ok", 200
 
+    # =====================
+    # COMMANDI TESTO (TEST / SEND)
+    # =====================
+    if "message" in data and "text" in data["message"]:
+
+        text = data["message"]["text"]
+        chat_id = data["message"]["chat"]["id"]
+
+        if text == "/test":
+            requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": "🧪 Test OK: il bot funziona"
+                }
+            )
+            return "ok", 200
+
+    # =====================
+    # CALLBACK QUERY
+    # =====================
     if "callback_query" not in data:
         return "ok", 200
 
@@ -129,7 +133,7 @@ def webhook():
     responded_users = set(responses.keys())
 
     # =====================
-    # KEYBOARD PRO
+    # KEYBOARD
     # =====================
     if username in responded_users and responses[username] == "ok":
         keyboard = {
@@ -145,7 +149,7 @@ def webhook():
         }
 
     # =====================
-    # UI SOLO NOMI + 🟢
+    # UI NOMI + 🟢
     # =====================
     all_users = list(expected_users)
 
@@ -177,7 +181,6 @@ def webhook():
         }
     )
 
-    # callback ack
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
         data={

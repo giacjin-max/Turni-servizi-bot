@@ -174,16 +174,14 @@ def webhook():
         else:
             status_text += f"{name}\n"
 
-    # =====================
-    # KEYBOARD (VOTO STYLE)
-    # =====================
-    if username in responded_users:
-        keyboard = {"inline_keyboard": []}
-    else:
-        keyboard = {
-            "inline_keyboard": [[
-                {"text": "✅ OK", "callback_data": f"ok|{date}"}
-            ]]
+        
+     # =====================
+     # KEYBOARD
+     # =====================
+     keyboard = {
+         "inline_keyboard": [[
+             {"text": "✅ OK", "callback_data": f"ok|{date}"}
+         ]]
         }
 
     # =====================

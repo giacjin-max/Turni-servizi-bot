@@ -123,28 +123,18 @@ def webhook():
                     {"text": "✔ Risposta registrata", "callback_data": "noop"}
                 ]]
             }
-        else:
-            keyboard = {
-                "inline_keyboard": [[
-                    {"text": "✅ OK", "callback_data": f"ok|{date}"},
-                    {"text": "❌ NON POSSO", "callback_data": f"no|{date}"}
-                ]]
-            }
-
-        # =====================
-        # COSTRUZIONE LISTA CON 🟢
-        # =====================
-        all_users = list(expected_users)
-
-        status_text = "\n\n📋 RISPOSTE\n\n"
-
-        for u in all_users:
-            name = to_name(u)
-
-            if u in responded_users and responses[u] == "ok":
-                status_text += f"{name} 🟢\n"
-            else:
-                status_text += f"{name}\n"
+        if username in responded_users and responses[username] == "ok":
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "🟢 Confermato", "callback_data": "noop"}
+        ]]
+    }
+else:
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "✅ OK", "callback_data": f"ok|{date}"}
+        ]]
+    }
 
         # =====================
         # UPDATE MESSAGE

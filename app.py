@@ -134,7 +134,6 @@ def webhook():
                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                 json={"chat_id": chat_id, "text": msg}
             )
-
             return "ok", 200
 
         return "ok", 200

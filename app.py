@@ -10,43 +10,6 @@ import sender
 app = Flask(__name__)
 
 # =====================
-# SCHEDULER
-# =====================
-
-scheduler = BackgroundScheduler()
-
-# Lunedì
-scheduler.add_job(
-    sender.send,
-    "cron",
-    day_of_week="mon",
-    hour=9,
-    minute=0
-)
-
-# Giovedì
-scheduler.add_job(
-    sender.run_reminder,
-    "cron",
-    day_of_week="thu",
-    hour=9,
-    minute=0
-)
-
-# Sabato
-scheduler.add_job(
-    sender.reminder_sabato,
-    "cron",
-    day_of_week="sat",
-    hour=10,
-    minute=0
-)
-
-scheduler.start()
-
-print("🚀 Scheduler attivo")
-
-# =====================
 # CONFIG
 # =====================
 SUPABASE_URL = os.environ["SUPABASE_URL"]
@@ -279,4 +242,38 @@ def home():
 
 
 if __name__ == "__main__":
+
+    scheduler = BackgroundScheduler()
+
+    # Lunedì
+    scheduler.add_job(
+        sender.send,
+        "cron",
+        day_of_week="mon",
+        hour=10,
+        minute=0
+    )
+
+    # Giovedì
+    scheduler.add_job(
+        sender.run_reminder,
+        "cron",
+        day_of_week="thu",
+        hour=9,
+        minute=0
+    )
+
+    # Sabato
+    scheduler.add_job(
+        sender.reminder_sabato,
+        "cron",
+        day_of_week="sat",
+        hour=10,
+        minute=0
+    )
+
+    scheduler.start()
+
+    print("🚀 Scheduler attivo")
+
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

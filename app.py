@@ -251,7 +251,7 @@ if __name__ == "__main__":
         "cron",
         day_of_week="mon",
         hour=10,
-        minute=0
+        minute=30
     )
 
     # Giovedì

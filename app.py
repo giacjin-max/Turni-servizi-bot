@@ -5,6 +5,9 @@ import re
 import requests
 from supabase import create_client
 from apscheduler.schedulers.background import BackgroundScheduler
+from pytz import timezone
+
+scheduler = BackgroundScheduler(timezone="Europe/Rome")
 import sender
 
 app = Flask(__name__)
@@ -261,7 +264,7 @@ if __name__ == "__main__":
         "cron",
         day_of_week="mon",
         hour=11,
-        minute=30,
+        minute=50,
         timezone="Europe/Rome"
     )
 
@@ -271,7 +274,7 @@ if __name__ == "__main__":
         "cron",
         day_of_week="mon",
         hour=11,
-        minute=45,
+        minute=55,
         timezone="Europe/Rome"
     )
 

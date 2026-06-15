@@ -118,17 +118,19 @@ def send():
         confirmed_users = set()
 
     # =====================
-    # FOOTER AGGIUNTO
+    # FOOTER
     # =====================
+
     footer = "\n📌 Servizio\n"
 
-    for u in sorted(expected_users):
-        footer += f"{to_username(u)}\n"
+    # expected_users = NOMI EXCEL ORIGINALI
+    for nome in sorted(expected_users):
+        footer += f"{nome}\n"
 
     footer += "\n📋 Confermati\n"
 
     for u in sorted(confirmed_users):
-        footer += f"{to_username(u)}\n"
+        footer += f"{u}\n"
 
     msg += footer
 

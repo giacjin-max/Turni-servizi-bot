@@ -91,38 +91,105 @@ def build_message():
 # =====================
 # SEND TURNI
 # =====================
-def send():
+def run_reminder():
 
-    result = build_message()
-    if not result:
+    master = get_master_message()
+
+    if not master:
+        print("❌ Nessun messaggio master trovato")
         return
 
-    msg, date, keyboard = result
+    date = master["date"]
 
-    print("📤 INVIO TURNI...")
+    # =====================
+    # LEGGI TURNO
+    # =====================
+    df = pd.read_excel("turni.xlsx")
 
-    res = requests.post(
-        url,
-        data={
+    df = df[df["Data"].notna()].copy()
+    df["Data"] = pd.to_datetime(df["Data"])
+    df = df.sort_values("Data")
+
+    riga = df.iloc[0]
+
+    expected_users = set()
+
+    for col in df.columns:
+
+        if col == "Data":
+            continue
+
+        value = riga[col]
+
+        if pd.isna(value):
+            continue
+
+        for nome in str(value).replace(";", ",").split(","):
+
+            nome = nome.strip().lower()
+
+            if nome:
+                expected_users.add(nome)
+
+    # =====================
+    # RISPOSTE DA SUPABASE
+    # =====================
+    res = supabase.table("responses") \
+        .select("*") \
+        .eq("date", date) \
+        .execute()
+
+    responded_users = {
+        r["username"]
+        for r in res.data
+        if r["status"] == "ok"
+    }
+
+    non_risposti = expected_users - responded_users
+
+    # =====================
+    # MESSAGGIO
+    # =====================
+    msg = "📢 PROMEMORIA RISPOSTA TURNI\n\n"
+
+    if non_risposti:
+
+        msg += "Non hanno ancora confermato:\n\n"
+
+        for u in sorted(non_risposti):
+            msg += f"{to_tag(u)}\n"
+
+        msg += "\nPremi il pulsante qui sotto per confermare."
+
+    else:
+
+        msg += "✅ Tutti hanno già confermato."
+
+    # =====================
+    # STESSO BOTTONE OK
+    # =====================
+    keyboard = {
+        "inline_keyboard": [[
+            {
+                "text": "✅ OK",
+                "callback_data": f"ok|{date}"
+            }
+        ]]
+    }
+
+    # =====================
+    # INVIO MESSAGGIO
+    # =====================
+    requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+        json={
             "chat_id": CHAT_ID,
             "text": msg,
-            "reply_markup": json.dumps(keyboard)
+            "reply_markup": keyboard
         }
     )
 
-    data = res.json()
-
-    if not data.get("ok"):
-        raise Exception(f"Telegram error: {data}")
-
-    with open("last_message.json", "w") as f:
-        json.dump({
-            "chat_id": CHAT_ID,
-            "message_id": data["result"]["message_id"],
-            "date": date
-        }, f)
-
-    print("✅ TURNI INVIATI:", date)
+    print("📢 Reminder giovedì inviato")
 
 # =====================
 # 🔥 FIXED REMINDER GIOVEDÌ (NUOVO COMPORTAMENTO)

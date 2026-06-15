@@ -27,7 +27,7 @@ def to_tag(name):
     return rubrica.get(name, name)
 
 # =====================
-# MASTER MESSAGE STORAGE
+# MASTER MESSAGE
 # =====================
 def get_master_message():
     try:
@@ -51,7 +51,6 @@ def build_message():
     today = pd.Timestamp.now()
     future_df = df[df["Data"] >= today]
 
-    # STOP pulito
     if future_df.empty:
         print("⛔ Nessun turno futuro trovato. Invio interrotto.")
         return None
@@ -88,12 +87,17 @@ def build_message():
     }
 
     return msg, date, keyboard
+
 # =====================
 # SEND TURNI
 # =====================
 def send():
 
-    msg, date, keyboard = build_message()
+    result = build_message()
+    if not result:
+        return
+
+    msg, date, keyboard = result
 
     print("📤 INVIO TURNI...")
 
@@ -111,7 +115,6 @@ def send():
     if not data.get("ok"):
         raise Exception(f"Telegram error: {data}")
 
-    # SALVA MESSAGGIO MASTER
     with open("last_message.json", "w") as f:
         json.dump({
             "chat_id": CHAT_ID,
@@ -122,7 +125,7 @@ def send():
     print("✅ TURNI INVIATI:", date)
 
 # =====================
-# REMINDER GIOVEDÌ (aggiorna messaggio)
+# 🔥 FIXED REMINDER GIOVEDÌ (NUOVO COMPORTAMENTO)
 # =====================
 def run_reminder():
 
@@ -137,7 +140,6 @@ def run_reminder():
     date = master["date"]
 
     df = pd.read_excel("turni.xlsx")
-
     df = df[df["Data"].notna()].copy()
     df["Data"] = pd.to_datetime(df["Data"])
     df = df.sort_values("Data")
@@ -161,20 +163,25 @@ def run_reminder():
 
     res = supabase.table("responses").select("*").eq("date", date).execute()
 
-    responded_users = {r["username"] for r in res.data if r["status"] == "ok"}
-    
+    responded_users = {
+        r["username"] for r in res.data if r["status"] == "ok"
+    }
+
+    # utenti NON risposti
     missing_users = expected_users - responded_users
 
-    if not missing_users:
-        print("✔ Tutti hanno risposto")
-        return
+    # =====================
+    # MESSAGGIO SEMPLICE (COME SABATO + EXTRA)
+    # =====================
+    text = "📢 PROMEMORIA SERVIZIO\n\n"
+    text += "⏳ Non dimenticare di rispondere al turno!\n\n"
 
-    text = "⏰ PROMEMORIA RISPOSTA\n\n"
-    text += "Non hai ancora confermato il turno:\n\n"
+    if missing_users:
+        text += "❌ NON ANCORA CONFERMATO:\n"
+        for u in missing_users:
+            text += f"• {to_tag(u)}\n"
 
-    for u in missing_users:
-        text += f"• @{u}\n"
-
+    # STESSO IDENTICO BOTTONE
     keyboard = {
         "inline_keyboard": [[
             {"text": "✅ OK", "callback_data": f"ok|{date}"}
@@ -182,40 +189,19 @@ def run_reminder():
     }
 
     requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
         json={
-            "chat_id": CHAT_ID,
+            "chat_id": chat_id,
+            "message_id": message_id,
             "text": text,
             "reply_markup": keyboard
         }
     )
 
-    print("📢 Reminder inviato ai mancanti")
-    return
-
-    text = "📅 TURNI (AGGIORNATO)\n\n📋 RISPOSTE:\n\n"
-
-    for u in expected_users:
-        name = to_tag(u)
-
-        if u in responded_users:
-            text += f"🟢 {name}\n"
-        else:
-            text += f"{name}\n"
-
-    requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
-        json={
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "text": text
-        }
-    )
-
-    print("🔄 Reminder aggiornato")
+    print("🔄 Reminder giovedì aggiornato")
 
 # =====================
-# REMINDER SABATO (solo messaggio)
+# REMINDER SABATO (UGUALE)
 # =====================
 def reminder_sabato():
 

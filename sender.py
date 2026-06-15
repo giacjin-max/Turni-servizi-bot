@@ -162,6 +162,36 @@ def run_reminder():
     res = supabase.table("responses").select("*").eq("date", date).execute()
 
     responded_users = {r["username"] for r in res.data if r["status"] == "ok"}
+    
+    missing_users = expected_users - responded_users
+
+    if not missing_users:
+        print("✔ Tutti hanno risposto")
+        return
+
+    text = "⏰ PROMEMORIA RISPOSTA\n\n"
+    text += "Non hai ancora confermato il turno:\n\n"
+
+    for u in missing_users:
+        text += f"• @{u}\n"
+
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "✅ OK", "callback_data": f"ok|{date}"}
+        ]]
+    }
+
+    requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+        json={
+            "chat_id": CHAT_ID,
+            "text": text,
+            "reply_markup": keyboard
+        }
+    )
+
+    print("📢 Reminder inviato ai mancanti")
+    return
 
     text = "📅 TURNI (AGGIORNATO)\n\n📋 RISPOSTE:\n\n"
 

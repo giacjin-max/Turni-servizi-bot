@@ -113,7 +113,7 @@ def send():
 # =====================
 # REMINDER (GIOVEDÌ)
 # =====================
-def reminder():
+def run_reminder():
 
     msg, date, expected_users, _ = build_turni()
 

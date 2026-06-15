@@ -1,225 +1,252 @@
-from flask import Flask, request
 import os
 import json
-import re
+import pandas as pd
 import requests
 from supabase import create_client
-
-app = Flask(__name__)
 
 # =====================
 # CONFIG
 # =====================
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+CHAT_ID = os.environ["CHAT_ID"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
-BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 # =====================
 # RUBRICA
 # =====================
-def load_rubrica():
-    try:
-        with open("rubrica.json", "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
+with open("rubrica.json", "r", encoding="utf-8") as f:
+    rubrica = json.load(f)
 
-rubrica = load_rubrica()
-
-def to_name(username):
-    username = username.lower().replace("@", "")
-    for nome, tag in rubrica.items():
-        if tag.lower().replace("@", "") == username:
-            return nome
-    return username
+def name_to_username(name: str) -> str:
+    """
+    Excel name -> Telegram username (@username)
+    """
+    key = str(name).strip().lower()
+    return rubrica.get(key, key)
 
 # =====================
-# UTENTI ATTESI
+# BUILD MESSAGGIO
 # =====================
-def extract_expected_users(text):
-    return set(re.findall(r"@([a-zA-Z0-9_]+)", text.lower()))
+def build_message():
 
-# =====================
-# SUPABASE
-# =====================
-def save_response(date, username, status):
-    supabase.table("responses").upsert({
-        "date": date,
-        "username": username,
-        "status": status
-    }).execute()
+    df = pd.read_excel("turni.xlsx")
 
-def get_responses(date):
-    res = supabase.table("responses").select("*").eq("date", date).execute()
-    return {r["username"]: r["status"] for r in (res.data or [])}
+    if df.empty:
+        return None
 
-# =====================
-# WEBHOOK
-# =====================
-@app.route("/", methods=["POST"])
-def webhook():
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df = df.dropna(subset=["Data"]).sort_values("Data")
 
-    data = request.get_json(silent=True)
-    if not data:
-        return "ok", 200
+    today = pd.Timestamp.now().normalize()
+    future_df = df[df["Data"] >= today]
 
-    # =====================
-    # MESSAGGI
-    # =====================
-    if "message" in data and "text" in data["message"]:
+    if future_df.empty:
+        print("⛔ Nessun turno futuro trovato")
+        return None
 
-        text = data["message"]["text"]
-        chat_id = data["message"]["chat"]["id"]
+    riga = future_df.iloc[0]
+    date = riga["Data"].strftime("%Y-%m-%d")
 
-        if text == "/test":
-            requests.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                json={"chat_id": chat_id, "text": "🧪 Bot OK"}
-            )
-            return "ok", 200
+    msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
+    msg += "👉 Premi OK quando hai visto il turno\n\n"
 
-        if text == "/send":
-            try:
-                import sender
-                sender.send()
-                msg = "🚀 Turni inviati con successo"
-            except Exception as e:
-                msg = f"❌ Errore sender:\n{str(e)}"
+    # 🔥 EXPECTED USERS = NOMI EXCEL
+    expected_users = set()
 
-            requests.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                json={"chat_id": chat_id, "text": msg}
-            )
+    for col in df.columns:
+        if col == "Data":
+            continue
 
-            return "ok", 200
+        value = riga[col]
+        if pd.isna(value):
+            continue
 
-        return "ok", 200
+        nomi = str(value).replace(";", ",").split(",")
 
-    # =====================
-    # CALLBACK
-    # =====================
-    if "callback_query" not in data:
-        return "ok", 200
+        msg += f"• {col}\n"
 
-    cb = data["callback_query"]
+        for nome in nomi:
+            nome = nome.strip()
+            if not nome:
+                continue
 
-    cb_id = cb["id"]
-    chat_id = cb["message"]["chat"]["id"]
-    msg_id = cb["message"]["message_id"]
+            # SERVIZI → username Telegram
+            username = name_to_username(nome)
 
-    username = cb["from"].get("username") or str(cb["from"]["id"])
-    username = username.lower()
+            msg += f"    {username}\n"
 
-    action, date = cb["data"].split("|")
+            # SALVIAMO NOME EXCEL
+            expected_users.add(nome.lower())
 
-    text_message = cb["message"]["text"]
+        msg += "\n"
 
-    expected_users = extract_expected_users(text_message)
-
-    # =====================
-    # NON ASSEGNATO
-    # =====================
-    if username not in expected_users:
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-            data={
-                "callback_query_id": cb_id,
-                "text": "Non sei assegnato 🚫"
-            }
-        )
-        return "ok", 200
-
-    # =====================
-    # RISPOSTE ATTUALI
-    # =====================
-    responses = get_responses(date)
-
-    responded_users = {
-        u for u, s in responses.items() if s == "ok"
-    }
-
-    # =====================
-    # DOPPIO CLICK
-    # =====================
-    if username in responded_users:
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-            data={
-                "callback_query_id": cb_id,
-                "text": "Hai già confermato ✔"
-            }
-        )
-        return "ok", 200
-
-    # =====================
-    # SALVA RISPOSTA
-    # =====================
-    save_response(date, username, action)
-
-    responses = get_responses(date)
-
-    responded_users = {
-        u for u, s in responses.items() if s == "ok"
-    }
-
-    # =====================
-    # UI RISPOSTE
-    # =====================
-    status_text = "\n\n📋 RISPOSTE\n\n"
-
-    for u in expected_users:
-        name = to_name(u)
-
-        if u in responded_users:
-            status_text += f"{name} 🟢\n"
-        else:
-            status_text += f"{name}\n"
-
-    # =====================
-    # KEYBOARD
-    # =====================
     keyboard = {
         "inline_keyboard": [[
             {"text": "✅ OK", "callback_data": f"ok|{date}"}
         ]]
     }
 
-    # =====================
-    # UPDATE MESSAGE
-    # =====================
-    original = text_message
+    return msg, date, keyboard, expected_users
 
-    if "\n\n📋 RISPOSTE" in original:
-        original = original.split("\n\n📋 RISPOSTE")[0]
+# =====================
+# SEND TURNI
+# =====================
+def send():
 
-    requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
+    result = build_message()
+    if not result:
+        return
+
+    msg, date, keyboard, expected_users = result
+
+    res = requests.post(
+        url,
         json={
-            "chat_id": chat_id,
-            "message_id": msg_id,
-            "text": original + status_text,
+            "chat_id": CHAT_ID,
+            "text": msg,
             "reply_markup": keyboard
         }
     )
 
+    data = res.json()
+
+    if not data.get("ok"):
+        print("Errore Telegram:", data)
+        return
+
+    # =====================
+    # SUPABASE CONFERMATI (USERNAME)
+    # =====================
+    try:
+        res_db = supabase.table("responses") \
+            .select("*") \
+            .eq("date", date) \
+            .execute()
+
+        confirmed_users = {
+            r["username"].strip().lower()
+            for r in (res_db.data or [])
+            if r.get("status") == "ok"
+        }
+
+    except Exception as e:
+        print("Errore Supabase:", e)
+        confirmed_users = set()
+
+    # =====================
+    # FOOTER (NOMI EXCEL PURI)
+    # =====================
+    msg += "\n📌 Servizio\n"
+
+    for u in sorted(expected_users):
+        msg += f"{u}\n"
+
+    msg += "\n📋 Confermati\n"
+
+    for u in sorted(confirmed_users):
+        msg += f"{u}\n"
+
     requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-        data={
-            "callback_query_id": cb_id,
-            "text": "Salvato ✔"
+        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
+        json={
+            "chat_id": CHAT_ID,
+            "message_id": data["result"]["message_id"],
+            "text": msg,
+            "reply_markup": keyboard
         }
     )
 
-    return "ok", 200
+    with open("last_message.json", "w", encoding="utf-8") as f:
+        json.dump({
+            "chat_id": CHAT_ID,
+            "message_id": data["result"]["message_id"],
+            "date": date
+        }, f, indent=2)
+
+    print("✅ TURNI INVIATI:", date)
 
 # =====================
-# HEALTH
+# REMINDER GIOVEDÌ
 # =====================
-@app.route("/", methods=["GET"])
-def home():
-    return "OK", 200
+def run_reminder():
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    result = build_message()
+    if not result:
+        print("❌ Nessun turno")
+        return
+
+    _, date, _, expected_users = result
+
+    try:
+        res = supabase.table("responses") \
+            .select("*") \
+            .eq("date", date) \
+            .execute()
+
+        confirmed_users = {
+            r["username"].strip().lower()
+            for r in (res.data or [])
+            if r.get("status") == "ok"
+        }
+
+    except Exception as e:
+        print("Errore Supabase:", e)
+        confirmed_users = set()
+
+    pending_users = expected_users - confirmed_users
+
+    msg = "📢 PROMEMORIA SERVIZIO\n\n"
+
+    if not pending_users:
+        msg += "✅ Tutti hanno già confermato"
+    else:
+        msg += "⛔ Non hanno ancora confermato:\n\n"
+
+        for u in sorted(pending_users):
+            msg += f"{u}\n"
+
+    keyboard = {
+        "inline_keyboard": [[
+            {
+                "text": "✅ OK",
+                "callback_data": f"ok|{date}"
+            }
+        ]]
+    }
+
+    requests.post(
+        url,
+        json={
+            "chat_id": CHAT_ID,
+            "text": msg,
+            "reply_markup": keyboard
+        }
+    )
+
+    print("📢 Reminder giovedì inviato")
+
+# =====================
+# REMINDER SABATO
+# =====================
+def reminder_sabato():
+
+    msg = (
+        "📢 PROMEMORIA SERVIZIO\n\n"
+        "Domani c’è il servizio.\n"
+        "Controlla i turni e preparati."
+    )
+
+    requests.post(
+        url,
+        json={
+            "chat_id": CHAT_ID,
+            "text": msg
+        }
+    )
+
+    print("📢 Reminder sabato inviato")

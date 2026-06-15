@@ -17,7 +17,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 # =====================
-# RUBRICA (nome Excel → username Telegram)
+# RUBRICA
 # =====================
 with open("rubrica.json", "r", encoding="utf-8") as f:
     rubrica = json.load(f)
@@ -113,7 +113,7 @@ def send():
         return
 
     # =====================
-    # SUPABASE CONFERMATI
+    # FIX RESET PER DATA (QUI LA MODIFICA IMPORTANTE)
     # =====================
     try:
         res_db = supabase.table("responses") \
@@ -166,7 +166,7 @@ def send():
     print("✅ TURNI INVIATI:", date)
 
 # =====================
-# 🔥 REMINDER GIOVEDÌ (NON MODIFICATO)
+# 🔥 REMINDER GIOVEDÌ (INVARIATO)
 # =====================
 def run_reminder():
 
@@ -196,7 +196,7 @@ def run_reminder():
     print("📢 Reminder giovedì inviato")
 
 # =====================
-# REMINDER SABATO (NON MODIFICATO)
+# REMINDER SABATO (INVARIATO)
 # =====================
 def reminder_sabato():
 

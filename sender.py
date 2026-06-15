@@ -96,6 +96,55 @@ def send():
         print("Errore Telegram:", data)
         return
 
+    message_id = data["result"]["message_id"]
+
+    # =====================
+    # SUPABASE CONFERMATI
+    # =====================
+    try:
+        res_db = supabase.table("responses") \
+            .select("*") \
+            .eq("date", date) \
+            .execute()
+
+        confirmed_users = {
+            r["username"].strip()
+            for r in (res_db.data or [])
+            if r.get("status") == "ok"
+        }
+
+    except Exception as e:
+        print("Errore Supabase:", e)
+        confirmed_users = set()
+
+    # =====================
+    # FOOTER AGGIUNTO
+    # =====================
+    footer = "\n📌 Servizio\n"
+
+    for u in sorted(expected_users):
+        footer += f"{to_username(u)}\n"
+
+    footer += "\n📋 Confermati\n"
+
+    for u in sorted(confirmed_users):
+        footer += f"{to_username(u)}\n"
+
+    msg += footer
+
+    # =====================
+    # UPDATE MESSAGGIO
+    # =====================
+    requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
+        json={
+            "chat_id": CHAT_ID,
+            "message_id": message_id,
+            "text": msg,
+            "reply_markup": keyboard
+        }
+    )
+
     print("✅ TURNI INVIATI:", date)
 
 # =====================

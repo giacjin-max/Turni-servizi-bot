@@ -250,7 +250,7 @@ if __name__ == "__main__":
         sender.send,
         "cron",
         day_of_week="mon",
-        hour=11,
+        hour=10,
         minute=00,
         timezone="Europe/Rome"
     )
@@ -259,18 +259,20 @@ if __name__ == "__main__":
     scheduler.add_job(
         sender.run_reminder,
         "cron",
-        day_of_week="thu",
-        hour=10,
-        minute=0
+        day_of_week="mon",
+        hour=11,
+        minute=30,
+        timezone="Europe/Rome"
     )
 
     # Sabato
     scheduler.add_job(
         sender.reminder_sabato,
         "cron",
-        day_of_week="sat",
-        hour=10,
-        minute=0
+        day_of_week="mon",
+        hour=11,
+        minute=45,
+        timezone="Europe/Rome"
     )
 
     scheduler.start()

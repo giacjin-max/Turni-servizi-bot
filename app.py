@@ -5,10 +5,49 @@ import re
 import requests
 from supabase import create_client
 from apscheduler.schedulers.background import BackgroundScheduler
-from pytz
+from pytz import timezone
+
+scheduler = BackgroundScheduler(timezone="Europe/Rome")
 import sender
 
 app = Flask(__name__)
+
+# =====================
+# SCHEDULER
+# =====================
+
+scheduler.add_job(
+    sender.send,
+    "cron",
+    day_of_week="mon",
+    hour=10,
+    minute=0,
+    timezone="Europe/Rome"
+)
+
+# =====================
+# 🔥 FIX SOLO QUI: GIOVEDÌ CORRETTO
+# =====================
+scheduler.add_job(
+    sender.run_reminder,
+    "cron",
+    day_of_week="mon",   
+    hour=11,
+    minute=55,
+    timezone="Europe/Rome"
+)
+
+scheduler.add_job(
+    sender.reminder_sabato,
+    "cron",
+    day_of_week="sat",
+    hour=10,
+    minute=00,
+    timezone="Europe/Rome"
+)
+
+scheduler.start()
+print("🚀 Scheduler attivo")
 
 # =====================
 # CONFIG
@@ -68,54 +107,35 @@ def webhook():
     if not data:
         return "ok", 200
 
-        # =====================
-        # COMANDI
-        # =====================
     if "message" in data and "text" in data["message"]:
 
         text = data["message"]["text"]
         chat_id = data["message"]["chat"]["id"]
 
-        # TEST
         if text == "/test":
             requests.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": "🧪 Bot OK"
-                }
+                json={"chat_id": chat_id, "text": "🧪 Bot OK"}
             )
             return "ok", 200
 
-        # SEND MANUALE
         if text == "/send":
-
             try:
                 import sender
-
                 sender.send()
-
                 msg = "🚀 Turni inviati con successo"
-
             except Exception as e:
-
                 msg = f"❌ Errore sender:\n{str(e)}"
 
             requests.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": msg
-                }
+                json={"chat_id": chat_id, "text": msg}
             )
 
             return "ok", 200
 
         return "ok", 200
 
-    # =====================
-    # CALLBACK QUERY
-    # =====================
     if "callback_query" not in data:
         return "ok", 200
 
@@ -134,9 +154,6 @@ def webhook():
 
     expected_users = extract_expected_users(text_message)
 
-    # =====================
-    # BLOCCO NON ASSEGNATI
-    # =====================
     if username not in expected_users:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
@@ -147,15 +164,9 @@ def webhook():
         )
         return "ok", 200
 
-    # =====================
-    # IGNORA NOOP
-    # =====================
     if action == "noop":
         return "ok", 200
 
-    # =====================
-    # BLOCCO DOPPIO CLICK
-    # =====================
     responses = get_responses(date)
 
     responded_users = {
@@ -163,7 +174,6 @@ def webhook():
     }
 
     if username in responded_users:
-
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
             data={
@@ -171,12 +181,8 @@ def webhook():
                 "text": "Hai già confermato ✔"
             }
         )
-
         return "ok", 200
 
-    # =====================
-    # SALVA RISPOSTA
-    # =====================
     save_response(date, username, action)
 
     responses = get_responses(date)
@@ -185,31 +191,21 @@ def webhook():
         u for u, s in responses.items() if s == "ok"
     }
 
-    # =====================
-    # UI NOMI + 🟢
-    # =====================
     status_text = "\n\n📋 RISPOSTE\n\n"
 
     for u in expected_users:
         name = to_name(u)
-
         if u in responded_users:
             status_text += f"{name} 🟢\n"
         else:
             status_text += f"{name}\n"
 
-    # =====================
-    # KEYBOARD
-    # =====================
     keyboard = {
         "inline_keyboard": [[
             {"text": "✅ OK", "callback_data": f"ok|{date}"}
         ]]
     }
 
-    # =====================
-    # UPDATE MESSAGGIO
-    # =====================
     original = text_message
 
     if "\n\n📋 RISPOSTE" in original:
@@ -225,7 +221,6 @@ def webhook():
         }
     )
 
-    # ACK
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
         data={"callback_query_id": cb_id, "text": "Salvato ✔"}
@@ -234,50 +229,10 @@ def webhook():
     return "ok", 200
 
 
-# =====================
-# HEALTH CHECK
-# =====================
 @app.route("/", methods=["GET"])
 def home():
     return "OK", 200
 
 
 if __name__ == "__main__":
-
-    scheduler = BackgroundScheduler()
-
-    # Lunedì
-    scheduler.add_job(
-        sender.send,
-        "cron",
-        day_of_week="mon",
-        hour=10,
-        minute=00,
-        timezone="Europe/Rome"
-    )
-
-    # Lunedì
-    scheduler.add_job(
-        sender.run_reminder,
-        "cron",
-        day_of_week="mon",
-        hour=12,
-        minute=00,
-        timezone="Europe/Rome"
-    )
-
-    # Sabato
-    scheduler.add_job(
-        sender.reminder_sabato,
-        "cron",
-        day_of_week="mon",
-        hour=11,
-        minute=55,
-        timezone="Europe/Rome"
-    )
-
-    scheduler.start()
-
-    print("🚀 Scheduler attivo")
-
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

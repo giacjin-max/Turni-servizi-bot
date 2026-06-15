@@ -130,13 +130,18 @@ def run_reminder():
         df = pd.read_excel("turni.xlsx")
 
         df = df[df["Data"].notna()].copy()
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-        df = df.dropna(subset=["Data"]).sort_values("Data")
+		df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+		df = df.dropna(subset=["Data"]).sort_values("Data")
 
-        if df.empty:
-            raise Exception("Excel vuoto")
+		today = pd.Timestamp.now().normalize()
 
-        riga = df.iloc[0]
+		future_df = df[df["Data"] >= today]
+
+		if future_df.empty:
+    		print("⛔ Nessun turno futuro trovato")
+    		return
+
+		riga = future_df.iloc[0]
         date = riga["Data"].strftime("%Y-%m-%d")
 
         expected_users = set()

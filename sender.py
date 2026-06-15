@@ -122,7 +122,7 @@ def send():
 # =====================
 # 🔥 REMINDER GIOVEDÌ (SEMPLICE + NON RISPOSTI + OK BUTTON)
 # =====================
-def reminder_sabato():
+def run_reminder():
 
     msg = (
 

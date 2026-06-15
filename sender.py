@@ -12,16 +12,18 @@ CHAT_ID = os.environ["CHAT_ID"]
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 # =====================
-# RUBRICA (nome Excel -> @username)
+# RUBRICA (NORMALIZZATA CORRETTAMENTE)
 # =====================
 with open("rubrica.json", "r", encoding="utf-8") as f:
-    rubrica = json.load(f)
+    raw_rubrica = json.load(f)
 
-def normalize(name: str) -> str:
-    return " ".join(str(name).strip().lower().split())
+rubrica = {
+    " ".join(k.strip().lower().split()): v
+    for k, v in raw_rubrica.items()
+}
 
 def to_username(name: str) -> str:
-    key = normalize(name)
+    key = " ".join(str(name).strip().lower().split())
     return rubrica.get(key, name)
 
 # =====================
@@ -41,6 +43,7 @@ def build_message():
     date = riga["Data"].strftime("%Y-%m-%d")
 
     msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
+    msg += "👉 Premi OK quando hai visto il turno\n\n"
 
     footer_names = set()
 
@@ -60,7 +63,7 @@ def build_message():
         msg += f"• {col}\n"
 
         for name in names:
-            name = normalize(name)
+            name = " ".join(name.strip().split())
             if not name:
                 continue
 

@@ -2,6 +2,7 @@ import os
 import json
 import pandas as pd
 import requests
+from datetime import datetime
 from supabase import create_client
 
 # =====================
@@ -22,31 +23,36 @@ url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 with open("rubrica.json", "r", encoding="utf-8") as f:
     rubrica = json.load(f)
 
-def name_to_username(name: str) -> str:
-    """
-    Excel name -> Telegram username (@username)
-    """
-    key = str(name).strip().lower()
-    return rubrica.get(key, key)
+def to_tag(name):
+    return rubrica.get(name, name)
+
+# =====================
+# MASTER MESSAGE
+# =====================
+def get_master_message():
+    try:
+        with open("last_message.json", "r") as f:
+            return json.load(f)
+    except:
+        return None
 
 # =====================
 # BUILD MESSAGGIO
 # =====================
 def build_message():
-
     df = pd.read_excel("turni.xlsx")
 
     if df.empty:
-        return None
+        raise Exception("Excel vuoto: nessun turno trovato")
 
-    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-    df = df.dropna(subset=["Data"]).sort_values("Data")
+    df["Data"] = pd.to_datetime(df["Data"])
+    df = df.sort_values("Data")
 
-    today = pd.Timestamp.now().normalize()
+    today = pd.Timestamp.now()
     future_df = df[df["Data"] >= today]
 
     if future_df.empty:
-        print("⛔ Nessun turno futuro trovato")
+        print("⛔ Nessun turno futuro trovato. Invio interrotto.")
         return None
 
     riga = future_df.iloc[0]
@@ -54,9 +60,6 @@ def build_message():
 
     msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
     msg += "👉 Premi OK quando hai visto il turno\n\n"
-
-    # 🔥 EXPECTED USERS = NOMI EXCEL
-    expected_users = set()
 
     for col in df.columns:
         if col == "Data":
@@ -72,16 +75,8 @@ def build_message():
 
         for nome in nomi:
             nome = nome.strip()
-            if not nome:
-                continue
-
-            # SERVIZI → username Telegram
-            username = name_to_username(nome)
-
-            msg += f"    {username}\n"
-
-            # SALVIAMO NOME EXCEL
-            expected_users.add(nome.lower())
+            if nome:
+                msg += f"    {to_tag(nome)}\n"
 
         msg += "\n"
 
@@ -91,7 +86,7 @@ def build_message():
         ]]
     }
 
-    return msg, date, keyboard, expected_users
+    return msg, date, keyboard
 
 # =====================
 # SEND TURNI
@@ -102,136 +97,111 @@ def send():
     if not result:
         return
 
-    msg, date, keyboard, expected_users = result
+    msg, date, keyboard = result
+
+    print("📤 INVIO TURNI...")
 
     res = requests.post(
         url,
-        json={
+        data={
             "chat_id": CHAT_ID,
             "text": msg,
-            "reply_markup": keyboard
+            "reply_markup": json.dumps(keyboard)
         }
     )
 
     data = res.json()
 
     if not data.get("ok"):
-        print("Errore Telegram:", data)
-        return
+        raise Exception(f"Telegram error: {data}")
 
-    # =====================
-    # SUPABASE CONFERMATI (USERNAME)
-    # =====================
-    try:
-        res_db = supabase.table("responses") \
-            .select("*") \
-            .eq("date", date) \
-            .execute()
-
-        confirmed_users = {
-            r["username"].strip().lower()
-            for r in (res_db.data or [])
-            if r.get("status") == "ok"
-        }
-
-    except Exception as e:
-        print("Errore Supabase:", e)
-        confirmed_users = set()
-
-    # =====================
-    # FOOTER (NOMI EXCEL PURI)
-    # =====================
-    msg += "\n📌 Servizio\n"
-
-    for u in sorted(expected_users):
-        msg += f"{u}\n"
-
-    msg += "\n📋 Confermati\n"
-
-    for u in sorted(confirmed_users):
-        msg += f"{u}\n"
-
-    requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
-        json={
-            "chat_id": CHAT_ID,
-            "message_id": data["result"]["message_id"],
-            "text": msg,
-            "reply_markup": keyboard
-        }
-    )
-
-    with open("last_message.json", "w", encoding="utf-8") as f:
+    with open("last_message.json", "w") as f:
         json.dump({
             "chat_id": CHAT_ID,
             "message_id": data["result"]["message_id"],
             "date": date
-        }, f, indent=2)
+        }, f)
 
     print("✅ TURNI INVIATI:", date)
 
 # =====================
-# REMINDER GIOVEDÌ
+# 🔥 FIXED REMINDER GIOVEDÌ (NUOVO COMPORTAMENTO)
 # =====================
 def run_reminder():
 
-    result = build_message()
-    if not result:
-        print("❌ Nessun turno")
+    master = get_master_message()
+
+    if not master:
+        print("❌ Nessun messaggio master trovato")
         return
 
-    _, date, _, expected_users = result
+    chat_id = master["chat_id"]
+    message_id = master["message_id"]
+    date = master["date"]
 
-    try:
-        res = supabase.table("responses") \
-            .select("*") \
-            .eq("date", date) \
-            .execute()
+    df = pd.read_excel("turni.xlsx")
+    df = df[df["Data"].notna()].copy()
+    df["Data"] = pd.to_datetime(df["Data"])
+    df = df.sort_values("Data")
 
-        confirmed_users = {
-            r["username"].strip().lower()
-            for r in (res.data or [])
-            if r.get("status") == "ok"
-        }
+    riga = df.iloc[0]
 
-    except Exception as e:
-        print("Errore Supabase:", e)
-        confirmed_users = set()
+    expected_users = set()
 
-    pending_users = expected_users - confirmed_users
+    for col in df.columns:
+        if col == "Data":
+            continue
 
-    msg = "📢 PROMEMORIA SERVIZIO\n\n"
+        value = riga[col]
+        if pd.isna(value):
+            continue
 
-    if not pending_users:
-        msg += "✅ Tutti hanno già confermato"
-    else:
-        msg += "⛔ Non hanno ancora confermato:\n\n"
+        for nome in str(value).replace(";", ",").split(","):
+            nome = nome.strip().lower()
+            if nome:
+                expected_users.add(nome)
 
-        for u in sorted(pending_users):
-            msg += f"{u}\n"
+    res = supabase.table("responses").select("*").eq("date", date).execute()
 
+    responded_users = {
+        r["username"] for r in res.data if r["status"] == "ok"
+    }
+
+    # utenti NON risposti
+    missing_users = expected_users - responded_users
+
+    # =====================
+    # MESSAGGIO SEMPLICE (COME SABATO + EXTRA)
+    # =====================
+    text = "📢 PROMEMORIA SERVIZIO\n\n"
+    text += "⏳ Non dimenticare di rispondere al turno!\n\n"
+
+    if missing_users:
+        text += "❌ NON ANCORA CONFERMATO:\n"
+        for u in missing_users:
+            text += f"• {to_tag(u)}\n"
+
+    # STESSO IDENTICO BOTTONE
     keyboard = {
         "inline_keyboard": [[
-            {
-                "text": "✅ OK",
-                "callback_data": f"ok|{date}"
-            }
+            {"text": "✅ OK", "callback_data": f"ok|{date}"}
         ]]
     }
 
     requests.post(
-        url,
+        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
         json={
-            "chat_id": CHAT_ID,
-            "text": msg,
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
             "reply_markup": keyboard
         }
     )
 
-    print("📢 Reminder giovedì inviato")
+    print("🔄 Reminder giovedì aggiornato")
 
 # =====================
-# REMINDER SABATO
+# REMINDER SABATO (UGUALE)
 # =====================
 def reminder_sabato():
 
@@ -242,7 +212,7 @@ def reminder_sabato():
     )
 
     requests.post(
-        url,
+        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
         json={
             "chat_id": CHAT_ID,
             "text": msg

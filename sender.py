@@ -199,16 +199,50 @@ def run_reminder():
     master = get_master_message()
 
     if not master:
-        print("❌ Nessun messaggio master trovato")
         return
 
     date = master["date"]
 
-    msg = (
-        "📢 PROMEMORIA RISPOSTA TURNI\n\n"
-        "Se non hai ancora confermato la lettura dei turni, "
-        "premi il pulsante qui sotto."
-    )
+    res = supabase.table("responses").select("*").eq("date", date).execute()
+
+    responded_users = {
+        r["username"]
+        for r in res.data
+        if r["status"] == "ok"
+    }
+
+    df = pd.read_excel("turni.xlsx")
+    df["Data"] = pd.to_datetime(df["Data"])
+    df = df.sort_values("Data")
+
+    riga = df.iloc[0]
+
+    msg = "📢 PROMEMORIA RISPOSTA TURNI\n\n"
+    msg += "Non hanno ancora confermato:\n\n"
+
+    found = False
+
+    for col in df.columns:
+
+        if col == "Data":
+            continue
+
+        value = riga[col]
+
+        if pd.isna(value):
+            continue
+
+        for nome in str(value).replace(";", ",").split(","):
+
+            nome = nome.strip().lower()
+
+            if nome and nome not in responded_users:
+
+                msg += f"{to_tag(nome)}\n"
+                found = True
+
+    if not found:
+        msg += "✅ Tutti hanno già confermato"
 
     keyboard = {
         "inline_keyboard": [[

@@ -2,7 +2,8 @@ import os
 import json
 import pandas as pd
 import requests
-import re
+from apscheduler.schedulers.background import BackgroundScheduler
+from supabase import create_client
 
 # =====================
 # CONFIG
@@ -12,72 +13,40 @@ CHAT_ID = os.environ["CHAT_ID"]
 
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-# =====================
-# CLEANER ROBUSTO
-# =====================
-def clean(text: str) -> str:
-    if not text:
-        return ""
-
-    text = str(text)
-
-    # rimuove caratteri invisibili Excel
-    text = re.sub(r"[\u200b-\u200f\uFEFF\u00A0]", "", text)
-
-    # normalizza spazi
-    text = " ".join(text.split())
-
-    return text.strip().lower()
+supabase = create_client(
+    os.environ["SUPABASE_URL"],
+    os.environ["SUPABASE_KEY"]
+)
 
 # =====================
-# RUBRICA NORMALIZZATA
+# RUBRICA
 # =====================
 with open("rubrica.json", "r", encoding="utf-8") as f:
-    raw_rubrica = json.load(f)
+    rubrica = json.load(f)
 
-rubrica = {
-    clean(k): v
-    for k, v in raw_rubrica.items()
-}
-
-# reverse mapping per debug
-rubrica_keys = set(rubrica.keys())
-
-def to_username(name: str) -> str:
-    key = clean(name)
-    return rubrica.get(key, name)
+def to_tag(name):
+    return rubrica.get(name, name)
 
 # =====================
-# DEBUG MISMATCH
+# GET RISPOSTE
 # =====================
-def debug_mismatch(excel_names: set):
-
-    missing = []
-
-    for name in excel_names:
-        if clean(name) not in rubrica_keys:
-            missing.append(name)
-
-    if missing:
-        print("\n🚨 MISMATCH RUBRICA DETECTATO:")
-        for m in missing:
-            print(f"  - {m}")
-        print("⚠️ Questi nomi NON sono presenti in rubrica.json\n")
-    else:
-        print("\n✅ Tutti i nomi Excel sono presenti in rubrica.json\n")
+def get_responses(date):
+    res = supabase.table("responses").select("*").eq("date", date).execute()
+    return {r["username"]: r["status"] for r in res.data}
 
 # =====================
-# BUILD MESSAGGIO
+# BUILD TURNI
 # =====================
-def build_message():
+def build_turni():
 
     df = pd.read_excel("turni.xlsx")
 
     if df.empty:
         return None
 
-    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-    df = df.dropna(subset=["Data"]).sort_values("Data")
+    df = df[df["Data"].notna()].copy()
+    df["Data"] = pd.to_datetime(df["Data"])
+    df = df.sort_values("Data")
 
     riga = df.iloc[0]
     date = riga["Data"].strftime("%Y-%m-%d")
@@ -85,7 +54,7 @@ def build_message():
     msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
     msg += "👉 Premi OK quando hai visto il turno\n\n"
 
-    excel_names = set()
+    expected_users = set()
 
     for col in df.columns:
         if col == "Data":
@@ -95,32 +64,19 @@ def build_message():
         if pd.isna(value):
             continue
 
-        names = str(value).split(",")
+        for nome in str(value).replace(";", ",").split(","):
+            nome = nome.strip().lower()
+            if nome:
+                expected_users.add(nome)
 
         msg += f"• {col}\n"
 
-        for name in names:
-            name = clean(name)
-            if not name:
-                continue
-
-            username = to_username(name)
-
-            msg += f"   {username}\n"
-
-            excel_names.add(name)
+        for nome in str(value).replace(";", ",").split(","):
+            nome = nome.strip()
+            if nome:
+                msg += f"    {to_tag(nome)}\n"
 
         msg += "\n"
-
-    # =====================
-    # DEBUG RUN
-    # =====================
-    debug_mismatch(excel_names)
-
-    msg += "📌 FOOTER\n\n"
-
-    for n in sorted(excel_names):
-        msg += f"{n}\n"
 
     keyboard = {
         "inline_keyboard": [[
@@ -128,20 +84,22 @@ def build_message():
         ]]
     }
 
-    return msg, date, keyboard
+    return msg, date, expected_users, keyboard
 
 # =====================
-# SEND
+# SEND TURNI (LUNEDÌ)
 # =====================
 def send():
 
-    result = build_message()
+    result = build_turni()
     if not result:
         return
 
-    msg, date, keyboard = result
+    msg, date, _, keyboard = result
 
-    res = requests.post(
+    print("📤 INVIO TURNI...")
+
+    requests.post(
         url,
         json={
             "chat_id": CHAT_ID,
@@ -150,5 +108,115 @@ def send():
         }
     )
 
-    print("status:", res.status_code)
-    print(res.text)
+    print("✅ TURNI INVIATI:", date)
+
+# =====================
+# REMINDER (GIOVEDÌ)
+# =====================
+def reminder():
+
+    msg, date, expected_users, _ = build_turni()
+
+    responses = get_responses(date)
+
+    responded_users = {
+        u for u, s in responses.items() if s == "ok"
+    }
+
+    non_responded = expected_users - responded_users
+
+    if not non_responded:
+        print("NESSUN REMINDER NECESSARIO")
+        return
+
+    msg = "⏳ Reminder: devi ancora confermare:\n\n"
+
+    for u in non_responded:
+        msg += f"• {to_tag(u)}\n"
+
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "✅ OK", "callback_data": f"ok|{date}"}
+        ]]
+    }
+
+    requests.post(
+        url,
+        json={
+            "chat_id": CHAT_ID,
+            "text": msg,
+            "reply_markup": keyboard
+        }
+    )
+
+    print("📨 REMINDER INVIATO:", date)
+
+# =====================
+# PROMEMORIA SABATO (DOMANI)
+# =====================
+def reminder_domani():
+
+    df = pd.read_excel("turni.xlsx")
+
+    if df.empty:
+        return
+
+    df = df[df["Data"].notna()].copy()
+    df["Data"] = pd.to_datetime(df["Data"])
+    df = df.sort_values("Data")
+
+    riga = df.iloc[0]
+    date = riga["Data"].strftime("%Y-%m-%d")
+
+    msg = "📢 PROMEMORIA DOMANI:\n\n"
+    msg += "Non dimenticare i servizi di domani 👇\n\n"
+
+    all_users = set()
+
+    for col in df.columns:
+        if col == "Data":
+            continue
+
+        value = riga[col]
+        if pd.isna(value):
+            continue
+
+        for nome in str(value).replace(";", ",").split(","):
+            nome = nome.strip()
+            if nome:
+                all_users.add(nome)
+
+    msg += "👥 Coinvolti:\n\n"
+
+    for u in all_users:
+        msg += f"• {to_tag(u)}\n"
+
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "✅ OK", "callback_data": f"ok|{date}"}
+        ]]
+    }
+
+    requests.post(
+        url,
+        json={
+            "chat_id": CHAT_ID,
+            "text": msg,
+            "reply_markup": keyboard
+        }
+    )
+
+    print("📢 PROMEMORIA SABATO INVIATO")
+
+# =====================
+# SCHEDULER
+# =====================
+scheduler = BackgroundScheduler()
+
+scheduler.add_job(send, "cron", day_of_week="mon", hour=9, minute=0)
+scheduler.add_job(reminder, "cron", day_of_week="thu", hour=9, minute=0)
+scheduler.add_job(reminder_domani, "cron", day_of_week="sat", hour=10, minute=0)
+
+scheduler.start()
+
+print("🚀 BOT ATTIVO: turni + reminder + promemoria")

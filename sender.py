@@ -22,15 +22,12 @@ url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 with open("rubrica.json", "r", encoding="utf-8") as f:
     rubrica = json.load(f)
 
-# nome Excel -> username Telegram (già con @ nella rubrica)
 def name_to_username(name: str) -> str:
+    """
+    Excel name -> Telegram username (@username)
+    """
     key = str(name).strip().lower()
     return rubrica.get(key, key)
-
-# username -> nome Excel (footer)
-def username_to_name(username: str) -> str:
-    reverse = {v.strip().lower(): k for k, v in rubrica.items()}
-    return reverse.get(str(username).strip().lower(), username)
 
 # =====================
 # BUILD MESSAGGIO
@@ -58,6 +55,7 @@ def build_message():
     msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
     msg += "👉 Premi OK quando hai visto il turno\n\n"
 
+    # 🔥 EXPECTED USERS = NOMI EXCEL
     expected_users = set()
 
     for col in df.columns:
@@ -77,12 +75,13 @@ def build_message():
             if not nome:
                 continue
 
-            # 🔥 SERVIZI: username già da rubrica (CON @)
+            # SERVIZI → username Telegram
             username = name_to_username(nome)
 
             msg += f"    {username}\n"
 
-            expected_users.add(username.lower())
+            # SALVIAMO NOME EXCEL
+            expected_users.add(nome.lower())
 
         msg += "\n"
 
@@ -121,7 +120,7 @@ def send():
         return
 
     # =====================
-    # SUPABASE CONFERMATI
+    # SUPABASE CONFERMATI (USERNAME)
     # =====================
     try:
         res_db = supabase.table("responses") \
@@ -140,17 +139,17 @@ def send():
         confirmed_users = set()
 
     # =====================
-    # FOOTER
+    # FOOTER (NOMI EXCEL PURI)
     # =====================
     msg += "\n📌 Servizio\n"
 
     for u in sorted(expected_users):
-        msg += f"{username_to_name(u)}\n"
+        msg += f"{u}\n"
 
     msg += "\n📋 Confermati\n"
 
     for u in sorted(confirmed_users):
-        msg += f"{username_to_name(u)}\n"
+        msg += f"{u}\n"
 
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",

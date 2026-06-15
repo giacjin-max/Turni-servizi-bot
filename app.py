@@ -250,8 +250,8 @@ if __name__ == "__main__":
         sender.send,
         "cron",
         day_of_week="mon",
-        hour=10,
-        minute=45,
+        hour=11,
+        minute=00,
         timezone="Europe/Rome"
     )
 

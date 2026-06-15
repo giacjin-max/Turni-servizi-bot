@@ -2,7 +2,7 @@ import os
 import json
 import pandas as pd
 import requests
-from datetime import datetime
+from apscheduler.schedulers.background import BackgroundScheduler
 from supabase import create_client
 
 # =====================
@@ -10,12 +10,13 @@ from supabase import create_client
 # =====================
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_KEY"]
-
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+supabase = create_client(
+    os.environ["SUPABASE_URL"],
+    os.environ["SUPABASE_KEY"]
+)
 
 # =====================
 # RUBRICA
@@ -27,124 +28,31 @@ def to_tag(name):
     return rubrica.get(name, name)
 
 # =====================
-# MASTER MESSAGE
+# GET RISPOSTE
 # =====================
-def get_master_message():
-    try:
-        with open("last_message.json", "r") as f:
-            return json.load(f)
-    except:
-        return None
+def get_responses(date):
+    res = supabase.table("responses").select("*").eq("date", date).execute()
+    return {r["username"]: r["status"] for r in res.data}
 
 # =====================
-# BUILD MESSAGGIO
+# BUILD TURNI
 # =====================
-def build_message():
+def build_turni():
+
     df = pd.read_excel("turni.xlsx")
 
     if df.empty:
-        raise Exception("Excel vuoto: nessun turno trovato")
-
-    df["Data"] = pd.to_datetime(df["Data"])
-    df = df.sort_values("Data")
-
-    today = pd.Timestamp.now()
-    future_df = df[df["Data"] >= today]
-
-    if future_df.empty:
-        print("⛔ Nessun turno futuro trovato. Invio interrotto.")
         return None
 
-    riga = future_df.iloc[0]
-    date = riga["Data"].strftime("%Y-%m-%d")
-
-    msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
-    msg += "👉 Premi OK quando hai visto il turno\n\n"
-
-    for col in df.columns:
-        if col == "Data":
-            continue
-
-        value = riga[col]
-        if pd.isna(value):
-            continue
-
-        nomi = str(value).replace(";", ",").split(",")
-
-        msg += f"• {col}\n"
-
-        for nome in nomi:
-            nome = nome.strip()
-            if nome:
-                msg += f"    {to_tag(nome)}\n"
-
-        msg += "\n"
-
-    keyboard = {
-        "inline_keyboard": [[
-            {"text": "✅ OK", "callback_data": f"ok|{date}"}
-        ]]
-    }
-
-    return msg, date, keyboard
-
-# =====================
-# SEND TURNI
-# =====================
-def send():
-
-    result = build_message()
-    if not result:
-        return
-
-    msg, date, keyboard = result
-
-    print("📤 INVIO TURNI...")
-
-    res = requests.post(
-        url,
-        data={
-            "chat_id": CHAT_ID,
-            "text": msg,
-            "reply_markup": json.dumps(keyboard)
-        }
-    )
-
-    data = res.json()
-
-    if not data.get("ok"):
-        raise Exception(f"Telegram error: {data}")
-
-    with open("last_message.json", "w") as f:
-        json.dump({
-            "chat_id": CHAT_ID,
-            "message_id": data["result"]["message_id"],
-            "date": date
-        }, f)
-
-    print("✅ TURNI INVIATI:", date)
-
-# =====================
-# 🔥 FIXED REMINDER GIOVEDÌ (NUOVO COMPORTAMENTO)
-# =====================
-def run_reminder():
-
-    master = get_master_message()
-
-    if not master:
-        print("❌ Nessun messaggio master trovato")
-        return
-
-    chat_id = master["chat_id"]
-    message_id = master["message_id"]
-    date = master["date"]
-
-    df = pd.read_excel("turni.xlsx")
     df = df[df["Data"].notna()].copy()
     df["Data"] = pd.to_datetime(df["Data"])
     df = df.sort_values("Data")
 
     riga = df.iloc[0]
+    date = riga["Data"].strftime("%Y-%m-%d")
+
+    msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
+    msg += "👉 Premi OK quando hai visto il turno\n\n"
 
     expected_users = set()
 
@@ -161,27 +69,71 @@ def run_reminder():
             if nome:
                 expected_users.add(nome)
 
-    res = supabase.table("responses").select("*").eq("date", date).execute()
+        msg += f"• {col}\n"
 
-    responded_users = {
-        r["username"] for r in res.data if r["status"] == "ok"
+        for nome in str(value).replace(";", ",").split(","):
+            nome = nome.strip()
+            if nome:
+                msg += f"    {to_tag(nome)}\n"
+
+        msg += "\n"
+
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "✅ OK", "callback_data": f"ok|{date}"}
+        ]]
     }
 
-    # utenti NON risposti
-    missing_users = expected_users - responded_users
+    return msg, date, expected_users, keyboard
 
-    # =====================
-    # MESSAGGIO SEMPLICE (COME SABATO + EXTRA)
-    # =====================
-    text = "📢 PROMEMORIA SERVIZIO\n\n"
-    text += "⏳ Non dimenticare di rispondere al turno!\n\n"
+# =====================
+# SEND TURNI (LUNEDÌ)
+# =====================
+def send():
 
-    if missing_users:
-        text += "❌ NON ANCORA CONFERMATO:\n"
-        for u in missing_users:
-            text += f"• {to_tag(u)}\n"
+    result = build_turni()
+    if not result:
+        return
 
-    # STESSO IDENTICO BOTTONE
+    msg, date, _, keyboard = result
+
+    print("📤 INVIO TURNI...")
+
+    requests.post(
+        url,
+        json={
+            "chat_id": CHAT_ID,
+            "text": msg,
+            "reply_markup": keyboard
+        }
+    )
+
+    print("✅ TURNI INVIATI:", date)
+
+# =====================
+# REMINDER (GIOVEDÌ)
+# =====================
+def reminder():
+
+    msg, date, expected_users, _ = build_turni()
+
+    responses = get_responses(date)
+
+    responded_users = {
+        u for u, s in responses.items() if s == "ok"
+    }
+
+    non_responded = expected_users - responded_users
+
+    if not non_responded:
+        print("NESSUN REMINDER NECESSARIO")
+        return
+
+    msg = "⏳ Reminder: devi ancora confermare:\n\n"
+
+    for u in non_responded:
+        msg += f"• {to_tag(u)}\n"
+
     keyboard = {
         "inline_keyboard": [[
             {"text": "✅ OK", "callback_data": f"ok|{date}"}
@@ -189,34 +141,82 @@ def run_reminder():
     }
 
     requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
+        url,
         json={
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "text": text,
+            "chat_id": CHAT_ID,
+            "text": msg,
             "reply_markup": keyboard
         }
     )
 
-    print("🔄 Reminder giovedì aggiornato")
+    print("📨 REMINDER INVIATO:", date)
 
 # =====================
-# REMINDER SABATO (UGUALE)
+# PROMEMORIA SABATO (DOMANI)
 # =====================
-def reminder_sabato():
+def reminder_domani():
 
-    msg = (
-        "📢 PROMEMORIA SERVIZIO\n\n"
-        "Domani c’è il servizio.\n"
-        "Controlla i turni e preparati."
-    )
+    df = pd.read_excel("turni.xlsx")
+
+    if df.empty:
+        return
+
+    df = df[df["Data"].notna()].copy()
+    df["Data"] = pd.to_datetime(df["Data"])
+    df = df.sort_values("Data")
+
+    riga = df.iloc[0]
+    date = riga["Data"].strftime("%Y-%m-%d")
+
+    msg = "📢 PROMEMORIA DOMANI:\n\n"
+    msg += "Non dimenticare i servizi di domani 👇\n\n"
+
+    all_users = set()
+
+    for col in df.columns:
+        if col == "Data":
+            continue
+
+        value = riga[col]
+        if pd.isna(value):
+            continue
+
+        for nome in str(value).replace(";", ",").split(","):
+            nome = nome.strip()
+            if nome:
+                all_users.add(nome)
+
+    msg += "👥 Coinvolti:\n\n"
+
+    for u in all_users:
+        msg += f"• {to_tag(u)}\n"
+
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "✅ OK", "callback_data": f"ok|{date}"}
+        ]]
+    }
 
     requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+        url,
         json={
             "chat_id": CHAT_ID,
-            "text": msg
+            "text": msg,
+            "reply_markup": keyboard
         }
     )
 
-    print("📢 Reminder sabato inviato")
+    print("📢 PROMEMORIA SABATO INVIATO")
+
+# =====================
+# SCHEDULER
+# =====================
+scheduler = BackgroundScheduler()
+
+scheduler.add_job(send, "cron", day_of_week="mon", hour=9, minute=0)
+scheduler.add_job(reminder, "cron", day_of_week="thu", hour=9, minute=0)
+scheduler.add_job(reminder_domani, "cron", day_of_week="sat", hour=10, minute=0)
+
+scheduler.start()
+
+print("🚀 BOT ATTIVO: turni + reminder + promemoria")

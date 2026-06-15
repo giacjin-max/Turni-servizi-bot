@@ -122,69 +122,101 @@ def send():
 # =====================
 # 🔥 REMINDER GIOVEDÌ (SEMPLICE + NON RISPOSTI + OK BUTTON)
 # =====================
-def run_reminder():
+def reminder_sabato():
 
-    master = get_master_message()
-    if not master:
-        print("❌ Nessun master message")
-        return
+    msg = (
 
-    date = master["date"]
+        "📢 PROMEMORIA SERVIZIO\n\n"
 
-    res = supabase.table("responses").select("*").eq("date", date).execute()
+        "Rispondere se non hai fatto.\n"
 
-    responded_users = {
-        r["username"]
-        for r in res.data
-        if r["status"] == "ok"
-    }
+    )
+
+    # =====================
+
+    # SOLO AGGIUNTA TAG NON RISPOSTI (SENZA ALTRO)
+
+    # =====================
 
     df = pd.read_excel("turni.xlsx")
+
     df["Data"] = pd.to_datetime(df["Data"])
+
     df = df.sort_values("Data")
 
     riga = df.iloc[0]
 
-    non_risposti = set()
+    expected_users = set()
 
     for col in df.columns:
+
         if col == "Data":
+
             continue
 
         value = riga[col]
+
         if pd.isna(value):
+
             continue
 
         for nome in str(value).replace(";", ",").split(","):
-            nome = nome.strip().lower()
-            if nome and nome not in responded_users:
-                non_risposti.add(nome)
 
-    msg = "📢 PROMEMORIA RISPOSTA TURNI\n\n"
+            nome = nome.strip().lower()
+
+            if nome:
+
+                expected_users.add(nome)
+
+    res = supabase.table("responses").select("*").execute()
+
+    responded_users = {
+
+        r["username"]
+
+        for r in res.data
+
+        if r["status"] == "ok"
+
+    }
+
+    non_risposti = expected_users - responded_users
 
     if non_risposti:
-        msg += "Non hanno ancora confermato:\n\n"
+
+        msg += "\nNon hanno ancora confermato:\n\n"
+
         for u in sorted(non_risposti):
+
             msg += f"{to_tag(u)}\n"
-    else:
-        msg += "✅ Tutti hanno già confermato"
 
     keyboard = {
+
         "inline_keyboard": [[
-            {"text": "✅ OK", "callback_data": f"ok|{date}"}
+
+            {"text": "✅ OK", "callback_data": "ok|reminder"}
+
         ]]
+
     }
 
     requests.post(
+
         f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+
         json={
+
             "chat_id": CHAT_ID,
+
             "text": msg,
+
             "reply_markup": keyboard
+
         }
+
     )
 
-    print("📢 Reminder giovedì inviato")
+    print("📢 Reminder guovedi inviato")
 
 # =====================
 # REMINDER SABATO

@@ -18,16 +18,13 @@ url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # =====================
-# RUBRICA
+# RUBRICA (NO NORMALIZE)
 # =====================
 with open("rubrica.json", "r", encoding="utf-8") as f:
     rubrica = json.load(f)
 
-def normalize(name: str) -> str:
-    return str(name).strip().lower()
-
 def to_tag(name: str) -> str:
-    return rubrica.get(normalize(name), name)
+    return rubrica.get(name.strip(), name.strip())
 
 # =====================
 # BUILD MESSAGGIO
@@ -108,7 +105,7 @@ def send():
     print("✅ TURNI INVIATI:", date)
 
 # =====================
-# 🔥 REMINDER GIOVEDÌ (RIPRISTINATO)
+# REMINDER GIOVEDÌ (FIXED)
 # =====================
 def run_reminder():
 
@@ -124,7 +121,6 @@ def run_reminder():
     riga = df.iloc[0]
     date = riga["Data"].strftime("%Y-%m-%d")
 
-    # expected users = Excel names
     expected_users = set()
 
     for col in df.columns:
@@ -136,11 +132,10 @@ def run_reminder():
             continue
 
         for nome in str(value).replace(";", ",").split(","):
-            nome = nome.strip().lower()
+            nome = nome.strip()
             if nome:
-                expected_users.add(nome)
+                expected_users.add(nome)   # ❗ FIX QUI
 
-    # responses da supabase
     try:
         res = supabase.table("responses") \
             .select("*") \
@@ -165,7 +160,6 @@ def run_reminder():
         msg += "✅ Tutti hanno già confermato"
     else:
         msg += "⛔ Non hanno ancora confermato:\n\n"
-
         for u in sorted(non_risposti):
             msg += f"@{u}\n"
 

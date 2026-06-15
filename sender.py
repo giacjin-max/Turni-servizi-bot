@@ -123,14 +123,18 @@ def send():
 
     footer = "\n📌 Servizio\n"
 
-    # expected_users = NOMI EXCEL ORIGINALI
+    # NOMI EXCEL (expected_users)
     for nome in sorted(expected_users):
         footer += f"{nome}\n"
 
     footer += "\n📋 Confermati\n"
 
-    for u in sorted(confirmed_users):
-        footer += f"{u}\n"
+    # CONVERTIAMO username -> nome Excel
+    for username in sorted(confirmed_users):
+
+        nome_excel = to_name(username)  # usa rubrica inversa
+
+        footer += f"{nome_excel}\n"
 
     msg += footer
 

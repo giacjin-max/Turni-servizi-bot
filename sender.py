@@ -17,7 +17,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 # =====================
-# RUBRICA
+# RUBRICA (nome Excel -> username Telegram)
 # =====================
 with open("rubrica.json", "r", encoding="utf-8") as f:
     rubrica = json.load(f)
@@ -25,6 +25,11 @@ with open("rubrica.json", "r", encoding="utf-8") as f:
 def to_tag(name: str) -> str:
     key = str(name).strip().lower()
     return rubrica.get(key, name)
+
+# reverse mapping: username -> nome Excel
+def username_to_excel_name(username: str) -> str:
+    reverse = {v.strip().lower(): k for k, v in rubrica.items()}
+    return reverse.get(username.strip().lower(), username)
 
 # =====================
 # MASTER MESSAGE
@@ -37,53 +42,39 @@ def get_master_message():
         return None
 
 # =====================
-
 # BUILD MESSAGGIO TURNI
-
 # =====================
-
 def build_message():
 
     df = pd.read_excel("turni.xlsx")
 
     if df.empty:
-
         return None, None, None
 
     df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-
     df = df.dropna(subset=["Data"]).sort_values("Data")
 
     today = pd.Timestamp.now().normalize()
-
     future_df = df[df["Data"] >= today]
 
     if future_df.empty:
-
         print("⛔ Nessun turno futuro trovato")
-
         return None, None, None
 
     riga = future_df.iloc[0]
-
     date = riga["Data"].strftime("%Y-%m-%d")
 
     msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
-
     msg += "👉 Premi OK quando hai visto il turno\n\n"
 
     expected_users = set()
 
     for col in df.columns:
-
         if col == "Data":
-
             continue
 
         value = riga[col]
-
         if pd.isna(value):
-
             continue
 
         nomi = str(value).replace(";", ",").split(",")
@@ -91,151 +82,96 @@ def build_message():
         msg += f"• {col}\n"
 
         for nome in nomi:
-
             nome = nome.strip()
-
             if nome:
-
                 msg += f"    {to_tag(nome)}\n"
-
                 expected_users.add(nome.strip().lower())
 
         msg += "\n"
 
     keyboard = {
-
         "inline_keyboard": [[
-
             {"text": "✅ OK", "callback_data": f"ok|{date}"}
-
         ]]
-
     }
 
     return msg, date, keyboard, expected_users
 
 # =====================
-
 # SEND TURNI
-
 # =====================
-
 def send():
 
     result = build_message()
-
     if not result:
-
         return
 
     msg, date, keyboard, expected_users = result
 
     res = requests.post(
-
         url,
-
         json={
-
             "chat_id": CHAT_ID,
-
             "text": msg,
-
             "reply_markup": keyboard
-
         }
-
     )
 
     data = res.json()
 
     if not data.get("ok"):
-
         print("Errore Telegram send:", data)
-
         return
 
     # =====================
-
     # SUPABASE CONFERMATI
-
     # =====================
-
     try:
-
         res_db = supabase.table("responses") \
-
             .select("*") \
-
             .eq("date", date) \
-
             .execute()
 
         confirmed_users = {
-
             r["username"].strip().lower()
-
             for r in (res_db.data or [])
-
             if r.get("status") == "ok"
-
         }
 
     except Exception as e:
-
         print("Errore supabase:", e)
-
         confirmed_users = set()
 
     # =====================
-
     # FOOTER MESSAGGIO
-
     # =====================
-
     msg += "\n📌 Servizio\n"
 
     for u in sorted(expected_users):
-
         msg += f"@{u}\n"
 
     msg += "\n📋 Confermati\n"
 
     for u in sorted(confirmed_users):
-
         msg += f"{username_to_excel_name(u)}\n"
 
     # aggiorna messaggio con footer
-
     requests.post(
-
         f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
-
         json={
-
             "chat_id": CHAT_ID,
-
             "message_id": data["result"]["message_id"],
-
             "text": msg,
-
             "reply_markup": keyboard
-
         }
-
     )
 
     # salva master
-
     with open("last_message.json", "w", encoding="utf-8") as f:
-
         json.dump({
-
             "chat_id": CHAT_ID,
-
             "message_id": data["result"]["message_id"],
-
             "date": date
-
         }, f, indent=2)
 
     print("✅ TURNI INVIATI:", date)
@@ -271,7 +207,7 @@ def run_reminder():
     print("📢 Reminder giovedì inviato")
 
 # =====================
-# REMINDER SABATO (SEMPLICE)
+# REMINDER SABATO
 # =====================
 def reminder_sabato():
 

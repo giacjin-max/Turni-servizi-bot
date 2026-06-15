@@ -191,7 +191,7 @@ def run_reminder():
             for nome in str(value).replace(";", ",").split(","):
                 nome = nome.strip()
                 if nome:
-                    expected_users.add(nome)
+                    expected_users.add(to_username(nome))
         res = supabase.table("responses") \
             .select("*") \
             .eq("date", date) \

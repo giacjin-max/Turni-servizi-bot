@@ -259,7 +259,7 @@ if __name__ == "__main__":
         sender.run_reminder,
         "cron",
         day_of_week="thu",
-        hour=9,
+        hour=10,
         minute=0
     )
 

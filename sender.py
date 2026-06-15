@@ -213,7 +213,7 @@ def run_reminder():
         msg += "\n⚠ Errore nel caricamento dati"
     keyboard = {
         "inline_keyboard": [[
-            {"text": "✅ OK", "callback_data": "ok|reminder"}
+            {"text": "✅ OK", "callback_data": f"ok|{date}"}
         ]]
     }
     requests.post(

@@ -2,7 +2,6 @@ import os
 import json
 import pandas as pd
 import requests
-from datetime import datetime
 from supabase import create_client
 
 # =====================
@@ -14,8 +13,6 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 # =====================
 # RUBRICA
@@ -37,13 +34,13 @@ def get_master_message():
         return None
 
 # =====================
-# BUILD MESSAGGIO
+# BUILD MESSAGGIO TURNI
 # =====================
 def build_message():
     df = pd.read_excel("turni.xlsx")
 
     if df.empty:
-        raise Exception("Excel vuoto: nessun turno trovato")
+        return None
 
     df["Data"] = pd.to_datetime(df["Data"])
     df = df.sort_values("Data")
@@ -52,7 +49,7 @@ def build_message():
     future_df = df[df["Data"] >= today]
 
     if future_df.empty:
-        print("⛔ Nessun turno futuro trovato. Invio interrotto.")
+        print("⛔ Nessun turno futuro trovato")
         return None
 
     riga = future_df.iloc[0]
@@ -91,96 +88,15 @@ def build_message():
 # =====================
 # SEND TURNI
 # =====================
-def run_reminder():
+def send():
 
-    master = get_master_message()
-
-    if not master:
-        print("❌ Nessun messaggio master trovato")
+    result = build_message()
+    if not result:
         return
 
-    date = master["date"]
+    msg, date, keyboard = result
 
-    # =====================
-    # LEGGI TURNO
-    # =====================
-    df = pd.read_excel("turni.xlsx")
-
-    df = df[df["Data"].notna()].copy()
-    df["Data"] = pd.to_datetime(df["Data"])
-    df = df.sort_values("Data")
-
-    riga = df.iloc[0]
-
-    expected_users = set()
-
-    for col in df.columns:
-
-        if col == "Data":
-            continue
-
-        value = riga[col]
-
-        if pd.isna(value):
-            continue
-
-        for nome in str(value).replace(";", ",").split(","):
-
-            nome = nome.strip().lower()
-
-            if nome:
-                expected_users.add(nome)
-
-    # =====================
-    # RISPOSTE DA SUPABASE
-    # =====================
-    res = supabase.table("responses") \
-        .select("*") \
-        .eq("date", date) \
-        .execute()
-
-    responded_users = {
-        r["username"]
-        for r in res.data
-        if r["status"] == "ok"
-    }
-
-    non_risposti = expected_users - responded_users
-
-    # =====================
-    # MESSAGGIO
-    # =====================
-    msg = "📢 PROMEMORIA RISPOSTA TURNI\n\n"
-
-    if non_risposti:
-
-        msg += "Non hanno ancora confermato:\n\n"
-
-        for u in sorted(non_risposti):
-            msg += f"{to_tag(u)}\n"
-
-        msg += "\nPremi il pulsante qui sotto per confermare."
-
-    else:
-
-        msg += "✅ Tutti hanno già confermato."
-
-    # =====================
-    # STESSO BOTTONE OK
-    # =====================
-    keyboard = {
-        "inline_keyboard": [[
-            {
-                "text": "✅ OK",
-                "callback_data": f"ok|{date}"
-            }
-        ]]
-    }
-
-    # =====================
-    # INVIO MESSAGGIO
-    # =====================
-    requests.post(
+    res = requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
         json={
             "chat_id": CHAT_ID,
@@ -189,16 +105,28 @@ def run_reminder():
         }
     )
 
-    print("📢 Reminder giovedì inviato")
+    data = res.json()
+
+    if not data.get("ok"):
+        raise Exception(f"Telegram error: {data}")
+
+    with open("last_message.json", "w") as f:
+        json.dump({
+            "chat_id": CHAT_ID,
+            "message_id": data["result"]["message_id"],
+            "date": date
+        }, f)
+
+    print("✅ TURNI INVIATI:", date)
 
 # =====================
-# 🔥 FIXED REMINDER GIOVEDÌ (NUOVO COMPORTAMENTO)
+# 🔥 REMINDER GIOVEDÌ (SEMPLICE + NON RISPOSTI + OK BUTTON)
 # =====================
 def run_reminder():
 
     master = get_master_message()
-
     if not master:
+        print("❌ Nessun master message")
         return
 
     date = master["date"]
@@ -217,31 +145,28 @@ def run_reminder():
 
     riga = df.iloc[0]
 
-    msg = "📢 PROMEMORIA RISPOSTA TURNI\n\n"
-    msg += "Non hanno ancora confermato:\n\n"
-
-    found = False
+    non_risposti = set()
 
     for col in df.columns:
-
         if col == "Data":
             continue
 
         value = riga[col]
-
         if pd.isna(value):
             continue
 
         for nome in str(value).replace(";", ",").split(","):
-
             nome = nome.strip().lower()
-
             if nome and nome not in responded_users:
+                non_risposti.add(nome)
 
-                msg += f"{to_tag(nome)}\n"
-                found = True
+    msg = "📢 PROMEMORIA RISPOSTA TURNI\n\n"
 
-    if not found:
+    if non_risposti:
+        msg += "Non hanno ancora confermato:\n\n"
+        for u in sorted(non_risposti):
+            msg += f"{to_tag(u)}\n"
+    else:
         msg += "✅ Tutti hanno già confermato"
 
     keyboard = {
@@ -262,7 +187,7 @@ def run_reminder():
     print("📢 Reminder giovedì inviato")
 
 # =====================
-# REMINDER SABATO (UGUALE)
+# REMINDER SABATO
 # =====================
 def reminder_sabato():
 

@@ -45,11 +45,18 @@ def build_message():
     if df.empty:
         raise Exception("Excel vuoto: nessun turno trovato")
 
-    df = df[df["Data"].notna()].copy()
     df["Data"] = pd.to_datetime(df["Data"])
     df = df.sort_values("Data")
 
-    riga = df.iloc[0]
+    today = pd.Timestamp.now()
+    future_df = df[df["Data"] >= today]
+
+    # STOP pulito
+    if future_df.empty:
+        print("⛔ Nessun turno futuro trovato. Invio interrotto.")
+        return None
+
+    riga = future_df.iloc[0]
     date = riga["Data"].strftime("%Y-%m-%d")
 
     msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
@@ -81,7 +88,6 @@ def build_message():
     }
 
     return msg, date, keyboard
-
 # =====================
 # SEND TURNI
 # =====================

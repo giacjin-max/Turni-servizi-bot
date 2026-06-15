@@ -3,7 +3,6 @@ import json
 import pandas as pd
 import requests
 from datetime import datetime
-from apscheduler.schedulers.background import BackgroundScheduler
 from supabase import create_client
 
 # =====================
@@ -13,6 +12,7 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -25,6 +25,16 @@ with open("rubrica.json", "r", encoding="utf-8") as f:
 
 def to_tag(name):
     return rubrica.get(name, name)
+
+# =====================
+# MASTER MESSAGE STORAGE
+# =====================
+def get_master_message():
+    try:
+        with open("last_message.json", "r") as f:
+            return json.load(f)
+    except:
+        return None
 
 # =====================
 # BUILD MESSAGGIO
@@ -73,13 +83,13 @@ def build_message():
     return msg, date, keyboard
 
 # =====================
-# INVIO PRINCIPALE (FIXED)
+# SEND TURNI
 # =====================
 def send():
 
     msg, date, keyboard = build_message()
 
-    print("📤 INVIO TURNI IN CORSO...")
+    print("📤 INVIO TURNI...")
 
     res = requests.post(
         url,
@@ -90,44 +100,36 @@ def send():
         }
     )
 
-    print("STATUS:", res.status_code)
-    print("RESPONSE:", res.text)
-
-    # =====================
-    # CHECK ERRORI REALI
-    # =====================
-    if res.status_code != 200:
-        raise Exception(f"Telegram error: {res.text}")
-
-    try:
-        data = res.json()
-    except:
-        raise Exception("Risposta Telegram non valida")
+    data = res.json()
 
     if not data.get("ok"):
-        raise Exception(f"Telegram refused message: {data}")
+        raise Exception(f"Telegram error: {data}")
 
-    print("✅ TURNI INVIATI CORRETTAMENTE:", date)
+    # SALVA MESSAGGIO MASTER
+    with open("last_message.json", "w") as f:
+        json.dump({
+            "chat_id": CHAT_ID,
+            "message_id": data["result"]["message_id"],
+            "date": date
+        }, f)
+
+    print("✅ TURNI INVIATI:", date)
 
 # =====================
-# REMINDER ( SOLO NON RISPOSTI)
+# REMINDER GIOVEDÌ (aggiorna messaggio)
 # =====================
 def run_reminder():
 
-    def get_master_message():
-    try:
-        with open("last_message.json", "r") as f:
-            return json.load(f)
-    except:
-        return None
+    master = get_master_message()
+
+    if not master:
+        print("❌ Nessun messaggio master trovato")
+        return
 
     chat_id = master["chat_id"]
     message_id = master["message_id"]
     date = master["date"]
 
-    # =====================
-    # EXCEL
-    # =====================
     df = pd.read_excel("turni.xlsx")
 
     df = df[df["Data"].notna()].copy()
@@ -151,23 +153,13 @@ def run_reminder():
             if nome:
                 expected_users.add(nome)
 
-    # =====================
-    # SUPABASE
-    # =====================
     res = supabase.table("responses").select("*").eq("date", date).execute()
 
-    responded_users = {
-        r["username"] for r in res.data if r["status"] == "ok"
-    }
+    responded_users = {r["username"] for r in res.data if r["status"] == "ok"}
 
-    # =====================
-    # UI AGGIORNATA
-    # =====================
-    text = "📅 TURNI (AGGIORNATO)\n\n"
-    text += "📋 RISPOSTE:\n\n"
+    text = "📅 TURNI (AGGIORNATO)\n\n📋 RISPOSTE:\n\n"
 
     for u in expected_users:
-
         name = to_tag(u)
 
         if u in responded_users:
@@ -175,9 +167,6 @@ def run_reminder():
         else:
             text += f"{name}\n"
 
-    # =====================
-    # UPDATE MESSAGGIO MASTER
-    # =====================
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
         json={
@@ -187,24 +176,17 @@ def run_reminder():
         }
     )
 
-    print("🔄 Messaggio master aggiornato (reminder live)")
+    print("🔄 Reminder aggiornato")
 
 # =====================
-# REMINDER TUTTI
+# REMINDER SABATO (solo messaggio)
 # =====================
-
 def reminder_sabato():
-
-    import requests
-    import os
-
-    BOT_TOKEN = os.environ["BOT_TOKEN"]
-    CHAT_ID = os.environ["CHAT_ID"]
 
     msg = (
         "📢 PROMEMORIA SERVIZIO\n\n"
         "Domani c’è il servizio.\n"
-        "Controlla i turni e preparati per il tuo incarico."
+        "Controlla i turni e preparati."
     )
 
     requests.post(
@@ -216,4 +198,3 @@ def reminder_sabato():
     )
 
     print("📢 Reminder sabato inviato")
-    

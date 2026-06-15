@@ -30,11 +30,10 @@ scheduler.add_job(
 # =====================
 scheduler.add_job(
     sender.run_reminder,
-    "cron",
-    day_of_week="mon",   
-    hour=12,
-    minute=00,
-    timezone="Europe/Rome"
+    "interval",
+    seconds=30,
+    
+    print("📅 REMINDER GIOVEDÌ ATTIVATO")
 )
 
 scheduler.add_job(

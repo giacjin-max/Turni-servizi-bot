@@ -38,13 +38,18 @@ def build_message():
         return None
 
     df = df[df["Data"].notna()].copy()
-    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-    df = df.dropna(subset=["Data"]).sort_values("Data")
+	df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+	df = df.dropna(subset=["Data"]).sort_values("Data")
 
-    if df.empty:
-        return None
+	today = pd.Timestamp.now().normalize()
 
-    riga = df.iloc[0]
+	future_df = df[df["Data"] >= today]
+
+	if future_df.empty:
+    	print("⛔ Nessun turno futuro trovato")
+    	return None
+
+	riga = future_df.iloc[0]
     date = riga["Data"].strftime("%Y-%m-%d")
 
     msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"

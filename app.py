@@ -46,6 +46,10 @@ scheduler.add_job(
 )
 
 scheduler.start()
+print("=== JOB REGISTRATI ===")
+
+for job in scheduler.get_jobs():
+    print(job)
 print("🚀 Scheduler attivo")
 
 # =====================

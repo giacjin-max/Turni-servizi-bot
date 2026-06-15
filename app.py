@@ -32,9 +32,9 @@ scheduler.add_job(
     sender.run_reminder,
     "interval",
     seconds=30,
-    
+)    
     print("📅 REMINDER GIOVEDÌ ATTIVATO")
-)
+
 
 scheduler.add_job(
     sender.reminder_sabato,

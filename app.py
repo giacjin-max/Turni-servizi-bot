@@ -31,8 +31,8 @@ scheduler.add_job(
     sender.run_reminder,
     "cron",
     day_of_week="mon",
-    hour=11,
-    minute=40,
+    hour=12,
+    minute=55,
     timezone="Europe/Rome"
 )
 

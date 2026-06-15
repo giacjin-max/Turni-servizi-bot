@@ -4,12 +4,16 @@ import pandas as pd
 import requests
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
+from supabase import create_client
 
 # =====================
 # CONFIG
 # =====================
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
@@ -110,12 +114,12 @@ def send():
 # =====================
 def run_reminder():
 
-    import pandas as pd
-
-    master = get_master_message()
-    if not master:
-        print("Nessun messaggio master trovato")
-        return
+    def get_master_message():
+    try:
+        with open("last_message.json", "r") as f:
+            return json.load(f)
+    except:
+        return None
 
     chat_id = master["chat_id"]
     message_id = master["message_id"]

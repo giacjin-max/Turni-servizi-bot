@@ -136,6 +136,9 @@ def run_reminder():
 
     date = master["date"]
 
+    # =====================
+    # LEGGI TURNI
+    # =====================
     df = pd.read_excel("turni.xlsx")
     df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
     df = df.dropna(subset=["Data"]).sort_values("Data")
@@ -157,6 +160,9 @@ def run_reminder():
             if nome:
                 expected_users.add(nome)
 
+    # =====================
+    # RISPOSTE
+    # =====================
     res = supabase.table("responses") \
         .select("*") \
         .eq("date", date) \
@@ -170,24 +176,36 @@ def run_reminder():
 
     non_risposti = expected_users - responded_users
 
+    # =====================
+    # MESSAGGIO (COME SABATO + TAG)
+    # =====================
     msg = "📢 PROMEMORIA SERVIZIO\n\n"
 
-    if not non_risposti:
-        msg += "✅ Tutti hanno già confermato"
-    else:
-        msg += "Non hanno ancora confermato:\n\n"
+    if non_risposti:
+        msg += "⛔ Non hanno ancora confermato:\n\n"
 
         for u in sorted(non_risposti):
             msg += f"{to_tag(u)}\n"
+    else:
+        msg += "✅ Tutti hanno già confermato"
 
+    # =====================
+    # BOTTONE IDENTICO
+    # =====================
     keyboard = {
         "inline_keyboard": [[
-            {"text": "✅ OK", "callback_data": f"ok|{date}"}
+            {
+                "text": "✅ OK",
+                "callback_data": f"ok|{date}"
+            }
         ]]
     }
 
+    # =====================
+    # INVIO
+    # =====================
     requests.post(
-        url,
+        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
         json={
             "chat_id": CHAT_ID,
             "text": msg,
@@ -196,7 +214,6 @@ def run_reminder():
     )
 
     print("📢 Reminder giovedì inviato")
-
 # =====================
 # REMINDER SABATO (SEMPLICE)
 # =====================

@@ -17,7 +17,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 # =====================
-# RUBRICA (nome Excel -> username Telegram)
+# RUBRICA
 # =====================
 with open("rubrica.json", "r", encoding="utf-8") as f:
     rubrica = json.load(f)
@@ -26,30 +26,19 @@ def to_tag(name: str) -> str:
     key = str(name).strip().lower()
     return rubrica.get(key, name)
 
-# reverse mapping: username -> nome Excel
 def username_to_excel_name(username: str) -> str:
     reverse = {v.strip().lower(): k for k, v in rubrica.items()}
     return reverse.get(username.strip().lower(), username)
 
 # =====================
-# MASTER MESSAGE
-# =====================
-def get_master_message():
-    try:
-        with open("last_message.json", "r") as f:
-            return json.load(f)
-    except:
-        return None
-
-# =====================
-# BUILD MESSAGGIO TURNI
+# BUILD MESSAGGIO
 # =====================
 def build_message():
 
     df = pd.read_excel("turni.xlsx")
 
     if df.empty:
-        return None, None, None
+        return None
 
     df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
     df = df.dropna(subset=["Data"]).sort_values("Data")
@@ -59,7 +48,7 @@ def build_message():
 
     if future_df.empty:
         print("⛔ Nessun turno futuro trovato")
-        return None, None, None
+        return None
 
     riga = future_df.iloc[0]
     date = riga["Data"].strftime("%Y-%m-%d")
@@ -120,7 +109,7 @@ def send():
     data = res.json()
 
     if not data.get("ok"):
-        print("Errore Telegram send:", data)
+        print("Errore Telegram:", data)
         return
 
     # =====================
@@ -139,11 +128,11 @@ def send():
         }
 
     except Exception as e:
-        print("Errore supabase:", e)
+        print("Errore Supabase:", e)
         confirmed_users = set()
 
     # =====================
-    # FOOTER MESSAGGIO
+    # FOOTER
     # =====================
     msg += "\n📌 Servizio\n"
 
@@ -155,7 +144,7 @@ def send():
     for u in sorted(confirmed_users):
         msg += f"{username_to_excel_name(u)}\n"
 
-    # aggiorna messaggio con footer
+    # aggiorna messaggio
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
         json={
@@ -177,20 +166,50 @@ def send():
     print("✅ TURNI INVIATI:", date)
 
 # =====================
-# 🔥 REMINDER GIOVEDÌ (SEMPLICE)
+# 🔥 REMINDER GIOVEDÌ (DIFFERENZA CORRETTA)
 # =====================
 def run_reminder():
 
-    msg = (
-        "📢 PROMEMORIA SERVIZIO\n\n"
-        "Ricordati di confermare la tua presenza."
-    )
+    result = build_message()
+    if not result:
+        print("❌ Nessun turno")
+        return
+
+    _, date, _, expected_users = result
+
+    try:
+        res = supabase.table("responses") \
+            .select("*") \
+            .eq("date", date) \
+            .execute()
+
+        confirmed_users = {
+            r["username"].strip().lower()
+            for r in (res.data or [])
+            if r.get("status") == "ok"
+        }
+
+    except Exception as e:
+        print("Errore Supabase:", e)
+        confirmed_users = set()
+
+    non_risposti = expected_users - confirmed_users
+
+    msg = "📢 PROMEMORIA SERVIZIO\n\n"
+
+    if not non_risposti:
+        msg += "✅ Tutti hanno già confermato"
+    else:
+        msg += "⛔ Non hanno ancora confermato:\n\n"
+
+        for u in sorted(non_risposti):
+            msg += f"@{u}\n"
 
     keyboard = {
         "inline_keyboard": [[
             {
                 "text": "✅ OK",
-                "callback_data": "ok|reminder"
+                "callback_data": f"ok|{date}"
             }
         ]]
     }

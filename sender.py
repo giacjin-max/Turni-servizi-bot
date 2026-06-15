@@ -25,6 +25,10 @@ with open("rubrica.json", "r", encoding="utf-8") as f:
 def name_to_username(name: str) -> str:
     return rubrica.get(str(name).strip().lower(), str(name).strip().lower())
 
+def username_to_name(username: str) -> str:
+    reverse = {v.strip().lower(): k for k, v in rubrica.items()}
+    return reverse.get(str(username).strip().lower(), username)
+
 # =====================
 # BUILD MESSAGGIO
 # =====================
@@ -68,12 +72,14 @@ def build_message():
         for nome in nomi:
             nome = nome.strip()
             if nome:
-                username = name_to_username(nome)
 
-                # SERVIZI → username con @
+                # 🔥 FIX CORRETTO
+                username = name_to_username(nome.lower())
+
                 msg += f"    @{username}\n"
 
-                expected_users.add(nome.strip().lower())
+                # ORA SALVIAMO USERNAME (NON NOME EXCEL)
+                expected_users.add(username.lower())
 
         msg += "\n"
 
@@ -131,20 +137,17 @@ def send():
         confirmed_users = set()
 
     # =====================
-    # FOOTER (FIX FINALE)
+    # FOOTER (NOMI EXCEL)
     # =====================
-    reverse_rubrica = {v.strip().lower(): k for k, v in rubrica.items()}
-
     msg += "\n📌 Servizio\n"
 
     for u in sorted(expected_users):
-        msg += f"{u}\n"
+        msg += f"{username_to_name(u)}\n"
 
     msg += "\n📋 Confermati\n"
 
     for u in sorted(confirmed_users):
-        name = reverse_rubrica.get(u, u)
-        msg += f"{name}\n"
+        msg += f"{username_to_name(u)}\n"
 
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
@@ -202,8 +205,8 @@ def run_reminder():
     else:
         msg += "⛔ Non hanno ancora confermato:\n\n"
 
-        for name in sorted(pending_users):
-            msg += f"@{name_to_username(name)}\n"
+        for u in sorted(pending_users):
+            msg += f"@{u}\n"
 
     keyboard = {
         "inline_keyboard": [[

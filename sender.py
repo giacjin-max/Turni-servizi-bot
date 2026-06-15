@@ -135,53 +135,14 @@ def run_reminder():
         print("❌ Nessun messaggio master trovato")
         return
 
-    chat_id = master["chat_id"]
-    message_id = master["message_id"]
     date = master["date"]
 
-    df = pd.read_excel("turni.xlsx")
-    df = df[df["Data"].notna()].copy()
-    df["Data"] = pd.to_datetime(df["Data"])
-    df = df.sort_values("Data")
+    msg = (
+        "📢 PROMEMORIA RISPOSTA TURNI\n\n"
+        "Se non hai ancora confermato la lettura dei turni, "
+        "premi il pulsante qui sotto."
+    )
 
-    riga = df.iloc[0]
-
-    expected_users = set()
-
-    for col in df.columns:
-        if col == "Data":
-            continue
-
-        value = riga[col]
-        if pd.isna(value):
-            continue
-
-        for nome in str(value).replace(";", ",").split(","):
-            nome = nome.strip().lower()
-            if nome:
-                expected_users.add(nome)
-
-    res = supabase.table("responses").select("*").eq("date", date).execute()
-
-    responded_users = {
-        r["username"] for r in res.data if r["status"] == "ok"
-    }
-
-    # utenti NON risposti
-    missing_users = expected_users - responded_users
-
-    # =====================
-    # MESSAGGIO SEMPLICE (COME SABATO + EXTRA)
-    # =====================
-    text = "📢 PROMEMORIA SERVIZIO\n\n"
-    text += "⏳ Non dimenticare di rispondere al turno!\n\n"
-
-    if missing_users:
-        text += "❌ NON ANCORA CONFERMATO:\n"
-        for u in missing_users:
-            text += f"• {to_tag(u)}\n"
-
-    # STESSO IDENTICO BOTTONE
     keyboard = {
         "inline_keyboard": [[
             {"text": "✅ OK", "callback_data": f"ok|{date}"}
@@ -189,16 +150,15 @@ def run_reminder():
     }
 
     requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
+        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
         json={
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "text": text,
+            "chat_id": CHAT_ID,
+            "text": msg,
             "reply_markup": keyboard
         }
     )
 
-    print("🔄 Reminder giovedì aggiornato")
+    print("📢 Reminder giovedì inviato")
 
 # =====================
 # REMINDER SABATO (UGUALE)

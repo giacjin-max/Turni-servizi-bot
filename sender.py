@@ -109,63 +109,14 @@ def send():
 # =====================
 def run_reminder():
 
-    df = pd.read_excel("turni.xlsx")
-
-    df = df[df["Data"].notna()].copy()
-    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-    df = df.dropna(subset=["Data"]).sort_values("Data")
-
-    if df.empty:
-        return
-
-    riga = df.iloc[0]
-    date = riga["Data"].strftime("%Y-%m-%d")
-
-    expected_users = set()
-
-    for col in df.columns:
-        if col == "Data":
-            continue
-
-        value = riga[col]
-        if pd.isna(value):
-            continue
-
-        for nome in str(value).replace(";", ",").split(","):
-            nome = nome.strip()
-            if nome:
-                expected_users.add(nome)   # ❗ FIX QUI
-
-    try:
-        res = supabase.table("responses") \
-            .select("*") \
-            .eq("date", date) \
-            .execute()
-
-        confirmed_users = {
-            r["username"].strip().lower()
-            for r in (res.data or [])
-            if r.get("status") == "ok"
-        }
-
-    except Exception as e:
-        print("Errore Supabase:", e)
-        confirmed_users = set()
-
-    non_risposti = expected_users - confirmed_users
-
-    msg = "📢 PROMEMORIA SERVIZIO\n\n"
-
-    if not non_risposti:
-        msg += "✅ Tutti hanno già confermato"
-    else:
-        msg += "⛔ Non hanno ancora confermato:\n\n"
-        for u in sorted(non_risposti):
-            msg += f"@{u}\n"
+    msg = (
+        "📢 PROMEMORIA SERVIZIO\n\n"
+        "Ricordati di rispondere.\n"
+    )
 
     keyboard = {
         "inline_keyboard": [[
-            {"text": "✅ OK", "callback_data": f"ok|{date}"}
+            {"text": "✅ OK", "callback_data": "ok|reminder"}
         ]]
     }
 

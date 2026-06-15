@@ -5,9 +5,7 @@ import re
 import requests
 from supabase import create_client
 from apscheduler.schedulers.background import BackgroundScheduler
-from pytz import timezone
-
-scheduler = BackgroundScheduler(timezone="Europe/Rome")
+from pytz
 import sender
 
 app = Flask(__name__)
@@ -258,13 +256,13 @@ if __name__ == "__main__":
         timezone="Europe/Rome"
     )
 
-    # Giovedì
+    # Lunedì
     scheduler.add_job(
         sender.run_reminder,
         "cron",
         day_of_week="mon",
-        hour=11,
-        minute=50,
+        hour=12,
+        minute=00,
         timezone="Europe/Rome"
     )
 

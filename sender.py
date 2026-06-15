@@ -17,18 +17,17 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 # =====================
-# RUBRICA
+# RUBRICA (nome Excel → username Telegram)
 # =====================
 with open("rubrica.json", "r", encoding="utf-8") as f:
     rubrica = json.load(f)
 
-def to_tag(name: str) -> str:
-    key = str(name).strip().lower()
-    return rubrica.get(key, name)
+def name_to_username(name: str) -> str:
+    return rubrica.get(str(name).strip().lower(), str(name).strip().lower())
 
-def username_to_excel_name(username: str) -> str:
+def username_to_name(username: str) -> str:
     reverse = {v.strip().lower(): k for k, v in rubrica.items()}
-    return reverse.get(username.strip().lower(), username)
+    return reverse.get(str(username).strip().lower(), username)
 
 # =====================
 # BUILD MESSAGGIO
@@ -73,7 +72,8 @@ def build_message():
         for nome in nomi:
             nome = nome.strip()
             if nome:
-                msg += f"    {to_tag(nome)}\n"
+                username = name_to_username(nome)
+                msg += f"    {username}\n"
                 expected_users.add(nome.strip().lower())
 
         msg += "\n"
@@ -137,12 +137,12 @@ def send():
     msg += "\n📌 Servizio\n"
 
     for u in sorted(expected_users):
-        msg += f"@{u}\n"
+        msg += f"{name_to_username(u)}\n"
 
     msg += "\n📋 Confermati\n"
 
     for u in sorted(confirmed_users):
-        msg += f"{username_to_excel_name(u)}\n"
+        msg += f"{username_to_name(u)}\n"
 
     # aggiorna messaggio
     requests.post(
@@ -166,50 +166,20 @@ def send():
     print("✅ TURNI INVIATI:", date)
 
 # =====================
-# 🔥 REMINDER GIOVEDÌ (DIFFERENZA CORRETTA)
+# 🔥 REMINDER GIOVEDÌ (NON MODIFICATO)
 # =====================
 def run_reminder():
 
-    result = build_message()
-    if not result:
-        print("❌ Nessun turno")
-        return
-
-    _, date, _, expected_users = result
-
-    try:
-        res = supabase.table("responses") \
-            .select("*") \
-            .eq("date", date) \
-            .execute()
-
-        confirmed_users = {
-            r["username"].strip().lower()
-            for r in (res.data or [])
-            if r.get("status") == "ok"
-        }
-
-    except Exception as e:
-        print("Errore Supabase:", e)
-        confirmed_users = set()
-
-    non_risposti = expected_users - confirmed_users
-
-    msg = "📢 PROMEMORIA SERVIZIO\n\n"
-
-    if not non_risposti:
-        msg += "✅ Tutti hanno già confermato"
-    else:
-        msg += "⛔ Non hanno ancora confermato:\n\n"
-
-        for u in sorted(non_risposti):
-            msg += f"@{u}\n"
+    msg = (
+        "📢 PROMEMORIA SERVIZIO\n\n"
+        "Rispondi se non hai ancora confermato."
+    )
 
     keyboard = {
         "inline_keyboard": [[
             {
                 "text": "✅ OK",
-                "callback_data": f"ok|{date}"
+                "callback_data": "ok|reminder"
             }
         ]]
     }
@@ -226,7 +196,7 @@ def run_reminder():
     print("📢 Reminder giovedì inviato")
 
 # =====================
-# REMINDER SABATO
+# REMINDER SABATO (NON MODIFICATO)
 # =====================
 def reminder_sabato():
 

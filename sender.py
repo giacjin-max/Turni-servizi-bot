@@ -22,9 +22,12 @@ url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 with open("rubrica.json", "r", encoding="utf-8") as f:
     rubrica = json.load(f)
 
+# nome Excel -> username Telegram (già con @ nella rubrica)
 def name_to_username(name: str) -> str:
-    return rubrica.get(str(name).strip().lower(), str(name).strip().lower())
+    key = str(name).strip().lower()
+    return rubrica.get(key, key)
 
+# username -> nome Excel (footer)
 def username_to_name(username: str) -> str:
     reverse = {v.strip().lower(): k for k, v in rubrica.items()}
     return reverse.get(str(username).strip().lower(), username)
@@ -71,15 +74,15 @@ def build_message():
 
         for nome in nomi:
             nome = nome.strip()
-            if nome:
+            if not nome:
+                continue
 
-                # 🔥 FIX CORRETTO
-                username = name_to_username(nome.lower())
+            # 🔥 SERVIZI: username già da rubrica (CON @)
+            username = name_to_username(nome)
 
-                msg += f"    @{username}\n"
+            msg += f"    {username}\n"
 
-                # ORA SALVIAMO USERNAME (NON NOME EXCEL)
-                expected_users.add(username.lower())
+            expected_users.add(username.lower())
 
         msg += "\n"
 
@@ -137,7 +140,7 @@ def send():
         confirmed_users = set()
 
     # =====================
-    # FOOTER (NOMI EXCEL)
+    # FOOTER
     # =====================
     msg += "\n📌 Servizio\n"
 
@@ -206,7 +209,7 @@ def run_reminder():
         msg += "⛔ Non hanno ancora confermato:\n\n"
 
         for u in sorted(pending_users):
-            msg += f"@{u}\n"
+            msg += f"{u}\n"
 
     keyboard = {
         "inline_keyboard": [[

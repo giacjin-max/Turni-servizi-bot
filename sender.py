@@ -23,6 +23,13 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 with open("rubrica.json", "r", encoding="utf-8") as f:
     rubrica = json.load(f)
 
+def to_name(username: str):
+    username = username.lower().replace("@", "")
+    for nome, tag in rubrica.items():
+        if tag.lower().replace("@", "") == username:
+            return nome
+    return username
+
 # Excel name → Telegram username
 def to_username(name: str) -> str:
     return rubrica.get(name.strip(), name.strip())

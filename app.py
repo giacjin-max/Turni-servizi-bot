@@ -171,7 +171,7 @@ scheduler.add_job(
 scheduler.add_job(
     run_reminder,
     "cron",
-    day_of_week="thu",
+    day_of_week="mon",
     hour=12,
     minute=40
 )

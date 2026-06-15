@@ -28,7 +28,7 @@ scheduler.add_job(
 # 🔥 GIOVEDÌ FIXATO (SOLO MODIFICA QUI)
 # =====================
 scheduler.add_job(
-    lambda: print("🔥 GIOVEDÌ JOB ATTIVO"),
+    sender.run_reminder,
     "cron",
     day_of_week="thu",
     hour=12,

@@ -113,7 +113,7 @@ def send():
         return
 
     # =====================
-    # FIX RESET PER DATA (QUI LA MODIFICA IMPORTANTE)
+    # SUPABASE CONFERMATI
     # =====================
     try:
         res_db = supabase.table("responses") \
@@ -144,7 +144,6 @@ def send():
     for u in sorted(confirmed_users):
         msg += f"{username_to_name(u)}\n"
 
-    # aggiorna messaggio
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
         json={
@@ -155,7 +154,6 @@ def send():
         }
     )
 
-    # salva master
     with open("last_message.json", "w", encoding="utf-8") as f:
         json.dump({
             "chat_id": CHAT_ID,
@@ -166,20 +164,51 @@ def send():
     print("✅ TURNI INVIATI:", date)
 
 # =====================
-# 🔥 REMINDER GIOVEDÌ (INVARIATO)
+# 🔥 REMINDER GIOVEDÌ (MODIFICATO COME RICHIESTO)
 # =====================
 def run_reminder():
 
-    msg = (
-        "📢 PROMEMORIA SERVIZIO\n\n"
-        "Rispondi se non hai ancora confermato."
-    )
+    result = build_message()
+    if not result:
+        print("❌ Nessun turno")
+        return
+
+    _, date, _, expected_users = result
+
+    try:
+        res = supabase.table("responses") \
+            .select("*") \
+            .eq("date", date) \
+            .execute()
+
+        confirmed_users = {
+            r["username"].strip().lower()
+            for r in (res.data or [])
+            if r.get("status") == "ok"
+        }
+
+    except Exception as e:
+        print("Errore Supabase:", e)
+        confirmed_users = set()
+
+    # DIFFERENZA
+    pending_users = expected_users - confirmed_users
+
+    msg = "📢 PROMEMORIA SERVIZIO\n\n"
+
+    if not pending_users:
+        msg += "✅ Tutti hanno già confermato"
+    else:
+        msg += "⛔ Non hanno ancora confermato:\n\n"
+
+        for name in sorted(pending_users):
+            msg += f"{name_to_username(name)}\n"
 
     keyboard = {
         "inline_keyboard": [[
             {
                 "text": "✅ OK",
-                "callback_data": "ok|reminder"
+                "callback_data": f"ok|{date}"
             }
         ]]
     }

@@ -25,10 +25,6 @@ with open("rubrica.json", "r", encoding="utf-8") as f:
 def name_to_username(name: str) -> str:
     return rubrica.get(str(name).strip().lower(), str(name).strip().lower())
 
-def username_to_name(username: str) -> str:
-    reverse = {v.strip().lower(): k for k, v in rubrica.items()}
-    return reverse.get(str(username).strip().lower(), username)
-
 # =====================
 # BUILD MESSAGGIO
 # =====================
@@ -73,7 +69,10 @@ def build_message():
             nome = nome.strip()
             if nome:
                 username = name_to_username(nome)
-                msg += f"    {username}\n"
+
+                # SERVIZI → username con @
+                msg += f"    @{username}\n"
+
                 expected_users.add(nome.strip().lower())
 
         msg += "\n"
@@ -132,17 +131,20 @@ def send():
         confirmed_users = set()
 
     # =====================
-    # FOOTER
+    # FOOTER (FIX FINALE)
     # =====================
+    reverse_rubrica = {v.strip().lower(): k for k, v in rubrica.items()}
+
     msg += "\n📌 Servizio\n"
 
     for u in sorted(expected_users):
-        msg += f"{name_to_username(u)}\n"
+        msg += f"{u}\n"
 
     msg += "\n📋 Confermati\n"
 
     for u in sorted(confirmed_users):
-        msg += f"{username_to_name(u)}\n"
+        name = reverse_rubrica.get(u, u)
+        msg += f"{name}\n"
 
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
@@ -164,7 +166,7 @@ def send():
     print("✅ TURNI INVIATI:", date)
 
 # =====================
-# 🔥 REMINDER GIOVEDÌ (MODIFICATO COME RICHIESTO)
+# REMINDER GIOVEDÌ
 # =====================
 def run_reminder():
 
@@ -191,7 +193,6 @@ def run_reminder():
         print("Errore Supabase:", e)
         confirmed_users = set()
 
-    # DIFFERENZA
     pending_users = expected_users - confirmed_users
 
     msg = "📢 PROMEMORIA SERVIZIO\n\n"
@@ -202,7 +203,7 @@ def run_reminder():
         msg += "⛔ Non hanno ancora confermato:\n\n"
 
         for name in sorted(pending_users):
-            msg += f"{name_to_username(name)}\n"
+            msg += f"@{name_to_username(name)}\n"
 
     keyboard = {
         "inline_keyboard": [[
@@ -225,7 +226,7 @@ def run_reminder():
     print("📢 Reminder giovedì inviato")
 
 # =====================
-# REMINDER SABATO (INVARIATO)
+# REMINDER SABATO
 # =====================
 def reminder_sabato():
 

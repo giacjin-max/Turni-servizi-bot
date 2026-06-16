@@ -80,7 +80,7 @@ def build_message():
 
             username = to_username(nome)
             msg += f"    {username}\n"
-            expected_users.add(nome)
+            expected_users.add(username)
 
         msg += "\n"
 
@@ -131,7 +131,7 @@ def send():
             .execute()
 
         confirmed_users = {
-            r["username"].strip().replace("@", "")
+            r["username"].strip()
             for r in (res_db.data or [])
             if r.get("status") == "ok"
         }
@@ -212,7 +212,13 @@ def run_reminder():
         if df.empty:
             return
 
-        riga = df.iloc[0]
+        today = pd.Timestamp.now().normalize()
+        future_df = df[df["Data"] >= today]
+
+        if future_df.empty:
+            return
+
+        riga = future_df.iloc[0]
         date = riga["Data"].strftime("%Y-%m-%d")
 
         expected_users = set()
@@ -240,9 +246,6 @@ def run_reminder():
         confirmed_users = {
             r["username"].strip()
             for r in res.data or []
-            if r.get("status") == "ok"
-        }
-            for r in (res.data or [])
             if r.get("status") == "ok"
         }
 

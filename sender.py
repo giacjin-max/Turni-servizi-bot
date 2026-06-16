@@ -128,7 +128,7 @@ def send():
     # FOOTER
     # =====================
 
-    footer = "\n📌 Servizio\n\n"
+	footer = "\n📌 Servizio\n\n"
 
 	for nome in sorted(expected_users):
 

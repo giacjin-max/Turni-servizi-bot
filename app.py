@@ -152,7 +152,6 @@ def webhook():
 
     # ❌ NO LOWER
     username = cb["from"].get("username") or str(cb["from"]["id"])
-    username = f"@{username}"
 
     action, date = cb["data"].split("|")
 

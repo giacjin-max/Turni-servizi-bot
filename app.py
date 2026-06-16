@@ -32,7 +32,7 @@ scheduler.add_job(
     "cron",
     day_of_week="tue",
     hour=15,
-    minute=30,
+    minute=55,
     timezone="Europe/Rome"
 )
 

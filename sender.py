@@ -124,9 +124,9 @@ def send():
         print("Errore Supabase:", e)
         confirmed_users = set()
 
-    # =====================
+	# =====================
 	# FOOTER
-    # =====================
+	# =====================
 
 	footer = "\n📌 Servizio\n\n"
 

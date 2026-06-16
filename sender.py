@@ -125,7 +125,7 @@ def send():
         confirmed_users = set()
 
     # =====================
-    # FOOTER
+	# FOOTER
     # =====================
 
 	footer = "\n📌 Servizio\n\n"

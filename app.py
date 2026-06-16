@@ -73,7 +73,6 @@ rubrica = load_rubrica()
 
 # lookup SOLO (NO LOWER)
 def to_name(username):
-    username = username.replace("@", "")
     for nome, tag in rubrica.items():
         if tag.replace("@", "") == username:
             return nome
@@ -153,7 +152,7 @@ def webhook():
 
     # ❌ NO LOWER
     username = cb["from"].get("username") or str(cb["from"]["id"])
-    username = username.replace("@", "")
+    username = f"@{username}"
 
     action, date = cb["data"].split("|")
 

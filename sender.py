@@ -39,41 +39,57 @@ def to_username(name: str) -> str:
 # =====================
 def build_message():
     df = pd.read_excel("turni.xlsx")
+
     if df.empty:
         return None
+
     df = df[df["Data"].notna()].copy()
     df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
     df = df.dropna(subset=["Data"]).sort_values("Data")
+
     today = pd.Timestamp.now().normalize()
     future_df = df[df["Data"] >= today]
+
     if future_df.empty:
         print("⛔ Nessun turno futuro trovato")
         return None
+
     riga = future_df.iloc[0]
     date = riga["Data"].strftime("%Y-%m-%d")
+
     msg = f"📅 TURNI {riga['Data'].strftime('%d/%m/%Y')}\n\n"
     msg += "👉 Premi OK quando hai visto il turno\n\n"
+
     expected_users = set()
+
     for col in df.columns:
         if col == "Data":
             continue
+
         value = riga[col]
         if pd.isna(value):
             continue
+
         nomi = str(value).replace(";", ",").split(",")
+
         msg += f"• {col}\n"
+
         for nome in nomi:
             nome = nome.strip()
             if not nome:
                 continue
+
             msg += f"    {to_username(nome)}\n"
             expected_users.add(nome)
+
         msg += "\n"
+
     keyboard = {
         "inline_keyboard": [[
             {"text": "✅ OK", "callback_data": f"ok|{date}"}
         ]]
     }
+
     return msg, date, keyboard, expected_users
 
 
@@ -124,20 +140,19 @@ def send():
         print("Errore Supabase:", e)
         confirmed_users = set()
 
-	# =====================
-	# FOOTER
-	# =====================
+    # =====================
+    # FOOTER (FIXATO)
+    # =====================
+    footer = "\n📌 Servizio\n\n"
 
-	footer = "\n📌 Servizio\n\n"
+    for nome in sorted(expected_users):
 
-	for nome in sorted(expected_users):
+        username = to_username(nome)
 
-    		username = to_username(nome)
-
-    		if username in confirmed_users:
-        		footer += f"{nome} 🟢\n"
-    		else:
-        		footer += f"{nome}\n"
+        if username in confirmed_users:
+            footer += f"{nome} 🟢\n"
+        else:
+            footer += f"{nome}\n"
 
     msg += footer
 
@@ -156,28 +171,81 @@ def send():
 
     print("✅ TURNI INVIATI:", date)
 
+
 # =====================
-# REMINDER GIOVEDÌ (SEMPLICE + NON RISPOSTI)
+# REMINDER GIOVEDÌ (FIX)
 # =====================
 def run_reminder():
-	non_risposti = expected_users - confirmed_users
 
-	msg = (
-    		"📢 PROMEMORIA SERVIZIO\n\n"
-    		"Ricordati di controllare i turni.\n"
-	)
+    df = pd.read_excel("turni.xlsx")
 
-	if non_risposti:
-    		msg += "\n⛔ Non hanno ancora confermato:\n\n"
+    df = df[df["Data"].notna()].copy()
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df = df.dropna(subset=["Data"]).sort_values("Data")
 
-    		for username in sorted(non_risposti):
-        		msg += f"{username}\n"
+    if df.empty:
+        return
 
-	else:
-    		msg += "\n✅ Tutti hanno già confermato"
+    riga = df.iloc[0]
+    date = riga["Data"].strftime("%Y-%m-%d")
+
+    expected_users = set()
+
+    for col in df.columns:
+        if col == "Data":
+            continue
+
+        value = riga[col]
+        if pd.isna(value):
+            continue
+
+        for nome in str(value).replace(";", ",").split(","):
+            nome = nome.strip()
+            if nome:
+                expected_users.add(nome)
+
+    try:
+        res = supabase.table("responses") \
+            .select("*") \
+            .eq("date", date) \
+            .execute()
+
+        confirmed_users = {
+            r["username"].strip()
+            for r in (res.data or [])
+            if r.get("status") == "ok"
+        }
+
+    except Exception:
+        confirmed_users = set()
+
+    non_risposti = expected_users - confirmed_users
+
+    msg = (
+        "📢 PROMEMORIA SERVIZIO\n\n"
+        "Ricordati di controllare i turni.\n"
+    )
+
+    if non_risposti:
+        msg += "\n⛔ Non hanno ancora confermato:\n\n"
+        for username in sorted(non_risposti):
+            msg += f"{username}\n"
+    else:
+        msg += "\n✅ Tutti hanno già confermato"
+
+    requests.post(
+        url,
+        json={
+            "chat_id": CHAT_ID,
+            "text": msg
+        }
+    )
+
+    print("📢 Reminder giovedì inviato")
+
 
 # =====================
-# REMINDER SABATO (SEMPLICE)
+# REMINDER SABATO
 # =====================
 def reminder_sabato():
 
@@ -196,4 +264,3 @@ def reminder_sabato():
     )
 
     print("📢 Reminder sabato inviato")
-

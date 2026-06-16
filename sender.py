@@ -22,9 +22,15 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # =====================
 with open("rubrica.json", "r", encoding="utf-8") as f:
     rubrica = json.load(f)
+    rubrica_name_to_username = rubrica
+    rubrica_username_to_name = {v: k for k, v in rubrica.items()}
 
 def to_username(name: str) -> str:
-    return rubrica.get(name.strip(), name.strip())
+    return rubrica_name_to_username.get(name.strip(), name.strip())
+    
+def to_name(username: str) -> str:
+    username = username.strip()
+    return rubrica_username_to_name.get(username, username)
 
 # =====================
 # BUILD MESSAGGIO TURNI
@@ -233,6 +239,9 @@ def run_reminder():
 
         confirmed_users = {
             r["username"].strip()
+            for r in res.data or []
+            if r.get("status") == "ok"
+        }
             for r in (res.data or [])
             if r.get("status") == "ok"
         }

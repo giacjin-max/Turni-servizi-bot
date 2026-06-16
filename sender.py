@@ -236,7 +236,7 @@ def run_reminder():
             for nome in nomi:
                 nome = nome.strip()
                 if nome:
-                    expected_users.add(to_username(nome).strip())
+                    expected_users.add(to_username(nome).replace("@", "").strip())
 
         res = supabase.table("responses") \
             .select("*") \
@@ -244,8 +244,8 @@ def run_reminder():
             .execute()
 
         confirmed_users = {
-            r["username"].strip()
-            for r in res.data or []
+            r["username"].replace("@", "").strip()
+            for r in (res.data or [])
             if r.get("status") == "ok"
         }
 
@@ -253,8 +253,9 @@ def run_reminder():
 
         if non_risposti:
             msg += "\n⛔ Non hanno ancora confermato:\n\n"
+
             for u in sorted(non_risposti):
-                msg += f"{u}\n"
+                msg += f"@{u}\n"
         else:
             msg += "\n✅ Tutti hanno già confermato"
 

@@ -23,14 +23,6 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 with open("rubrica.json", "r", encoding="utf-8") as f:
     rubrica = json.load(f)
 
-def to_name(username: str):
-    username = username.lower().replace("@", "")
-    for nome, tag in rubrica.items():
-        if tag.lower().replace("@", "") == username:
-            return nome
-    return username
-
-# Excel name → Telegram username
 def to_username(name: str) -> str:
     return rubrica.get(name.strip(), name.strip())
 
@@ -38,6 +30,7 @@ def to_username(name: str) -> str:
 # BUILD MESSAGGIO TURNI
 # =====================
 def build_message():
+
     df = pd.read_excel("turni.xlsx")
 
     if df.empty:
@@ -79,8 +72,12 @@ def build_message():
             if not nome:
                 continue
 
-            msg += f"    {to_username(nome)}\n"
-            expected_users.add(nome)
+            username = to_username(nome)
+
+            msg += f"    {username}\n"
+
+            # RAW @username (NO LOWER, NO NORMALIZE)
+            expected_users.add(username)
 
         msg += "\n"
 
@@ -141,18 +138,31 @@ def send():
         confirmed_users = set()
 
     # =====================
-    # FOOTER (FIXATO)
+    # FOOTER
     # =====================
     footer = "\n📌 Servizio\n\n"
 
-    for nome in sorted(expected_users):
+    for col in df.columns:
+        if col == "Data":
+            continue
 
-        username = to_username(nome)
+        value = riga[col]
+        if pd.isna(value):
+            continue
 
-        if username in confirmed_users:
-            footer += f"{nome} 🟢\n"
-        else:
-            footer += f"{nome}\n"
+        nomi = str(value).replace(";", ",").split(",")
+
+        for nome in nomi:
+            nome = nome.strip()
+            if not nome:
+                continue
+
+            username = to_username(nome)
+
+            if username in confirmed_users:
+                footer += f"{nome} 🟢\n"
+            else:
+                footer += f"{nome}\n"
 
     msg += footer
 
@@ -173,41 +183,48 @@ def send():
 
 
 # =====================
-# REMINDER GIOVEDÌ (FIX)
+# REMINDER GIOVEDÌ
 # =====================
 def run_reminder():
 
-    df = pd.read_excel("turni.xlsx")
-
-    df = df[df["Data"].notna()].copy()
-    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-    df = df.dropna(subset=["Data"]).sort_values("Data")
-
-    if df.empty:
-        return
-
-    riga = df.iloc[0]
-    date = riga["Data"].strftime("%Y-%m-%d")
-
-    expected_users = set()
-
-    for col in df.columns:
-        if col == "Data":
-            continue
-
-        value = riga[col]
-        if pd.isna(value):
-            continue
-
-        for nome in str(value).replace(";", ",").split(","):
-            nome = nome.strip()
-            if nome:
-                expected_users.add(nome)
+    msg = (
+        "📢 PROMEMORIA SERVIZIO\n\n"
+        "Ricordati di controllare i turni.\n"
+    )
 
     try:
+        df = pd.read_excel("turni.xlsx")
+        df = df[df["Data"].notna()].copy()
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df = df.dropna(subset=["Data"]).sort_values("Data")
+
+        if df.empty:
+            return
+
+        riga = df.iloc[0]
+
+        expected_users = set()
+
+        for col in df.columns:
+            if col == "Data":
+                continue
+
+            value = riga[col]
+            if pd.isna(value):
+                continue
+
+            nomi = str(value).replace(";", ",").split(",")
+
+            for nome in nomi:
+                nome = nome.strip()
+                if not nome:
+                    continue
+
+                expected_users.add(to_username(nome))
+
         res = supabase.table("responses") \
             .select("*") \
-            .eq("date", date) \
+            .eq("date", riga["Data"].strftime("%Y-%m-%d")) \
             .execute()
 
         confirmed_users = {
@@ -216,22 +233,18 @@ def run_reminder():
             if r.get("status") == "ok"
         }
 
-    except Exception:
-        confirmed_users = set()
+        non_risposti = expected_users - confirmed_users
 
-    non_risposti = expected_users - confirmed_users
+        if non_risposti:
+            msg += "\n⛔ Non hanno ancora confermato:\n\n"
+            for u in sorted(non_risposti):
+                msg += f"{u}\n"
+        else:
+            msg += "\n✅ Tutti hanno già confermato"
 
-    msg = (
-        "📢 PROMEMORIA SERVIZIO\n\n"
-        "Ricordati di controllare i turni.\n"
-    )
-
-    if non_risposti:
-        msg += "\n⛔ Non hanno ancora confermato:\n\n"
-        for username in sorted(non_risposti):
-            msg += f"{username}\n"
-    else:
-        msg += "\n✅ Tutti hanno già confermato"
+    except Exception as e:
+        print("Errore reminder:", e)
+        msg += "\n⚠ errore"
 
     requests.post(
         url,
@@ -240,8 +253,6 @@ def run_reminder():
             "text": msg
         }
     )
-
-    print("📢 Reminder giovedì inviato")
 
 
 # =====================
@@ -262,5 +273,3 @@ def reminder_sabato():
             "text": msg
         }
     )
-
-    print("📢 Reminder sabato inviato")

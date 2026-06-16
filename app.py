@@ -20,13 +20,10 @@ scheduler.add_job(
     "cron",
     day_of_week="mon",
     hour=10,
-    minute=00,
+    minute=0,
     timezone="Europe/Rome"
 )
 
-# =====================
-# 🔥 GIOVEDÌ FIXATO (SOLO MODIFICA QUI)
-# =====================
 scheduler.add_job(
     sender.run_reminder,
     "cron",
@@ -50,6 +47,7 @@ print("=== JOB REGISTRATI ===")
 
 for job in scheduler.get_jobs():
     print(job)
+
 print("🚀 Scheduler attivo")
 
 # =====================
@@ -73,10 +71,11 @@ def load_rubrica():
 
 rubrica = load_rubrica()
 
+# lookup SOLO (NO LOWER)
 def to_name(username):
-    username = username.lower().replace("@", "")
+    username = username.replace("@", "")
     for nome, tag in rubrica.items():
-        if tag.lower().replace("@", "") == username:
+        if tag.replace("@", "") == username:
             return nome
     return username
 
@@ -84,7 +83,7 @@ def to_name(username):
 # UTENTI ATTESI
 # =====================
 def extract_expected_users(text):
-    return set(re.findall(r"@([a-zA-Z0-9_]+)", text.lower()))
+    return set(re.findall(r"@([a-zA-Z0-9_]+)", text))
 
 # =====================
 # SUPABASE
@@ -110,6 +109,9 @@ def webhook():
     if not data:
         return "ok", 200
 
+    # =====================
+    # MESSAGGI
+    # =====================
     if "message" in data and "text" in data["message"]:
 
         text = data["message"]["text"]
@@ -124,7 +126,6 @@ def webhook():
 
         if text == "/send":
             try:
-                import sender
                 sender.send()
                 msg = "🚀 Turni inviati con successo"
             except Exception as e:
@@ -138,6 +139,9 @@ def webhook():
 
         return "ok", 200
 
+    # =====================
+    # CALLBACK
+    # =====================
     if "callback_query" not in data:
         return "ok", 200
 
@@ -147,8 +151,9 @@ def webhook():
     chat_id = cb["message"]["chat"]["id"]
     msg_id = cb["message"]["message_id"]
 
+    # ❌ NO LOWER
     username = cb["from"].get("username") or str(cb["from"]["id"])
-    username = username.lower()
+    username = username.replace("@", "")
 
     action, date = cb["data"].split("|")
 
@@ -197,6 +202,7 @@ def webhook():
 
     for u in expected_users:
         name = to_name(u)
+
         if u in responded_users:
             status_text += f"{name} 🟢\n"
         else:

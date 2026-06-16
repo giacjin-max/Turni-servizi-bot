@@ -73,11 +73,8 @@ def build_message():
                 continue
 
             username = to_username(nome)
-
             msg += f"    {username}\n"
-
-            # RAW @username (NO LOWER, NO NORMALIZE)
-            expected_users.add(username)
+            expected_users.add(nome)
 
         msg += "\n"
 
@@ -138,38 +135,38 @@ def send():
         confirmed_users = set()
 
     # =====================
-    # FOOTER
+    # FOOTER FIXATO
     # =====================
     footer = "\n📌 Servizio\n\n"
 
-	already_added = set()
+    already_added = set()
 
-	for col in df.columns:
-    	if col == "Data":
-        	continue
+    for col in df.columns:
+        if col == "Data":
+            continue
 
-    	value = riga[col]
-    	if pd.isna(value):
-        	continue
+        value = riga[col]
+        if pd.isna(value):
+            continue
 
-    	nomi = str(value).replace(";", ",").split(",")
+        nomi = str(value).replace(";", ",").split(",")
 
-    	for nome in nomi:
-        	nome = nome.strip()
-        	if not nome:
-            	continue
+        for nome in nomi:
+            nome = nome.strip()
+            if not nome:
+                continue
 
-        	if nome in already_added:
-            	continue  # ❌ evita duplicati
+            if nome in already_added:
+                continue
 
-        	already_added.add(nome)
+            already_added.add(nome)
 
-        	username = to_username(nome)
+            username = to_username(nome)
 
-        	if username in confirmed_users:
-            	footer += f"{nome} 🟢\n"
-        	else:
-            	footer += f"{nome}\n"
+            if username in confirmed_users:
+                footer += f"{nome} 🟢\n"
+            else:
+                footer += f"{nome}\n"
 
     msg += footer
 
@@ -201,6 +198,7 @@ def run_reminder():
 
     try:
         df = pd.read_excel("turni.xlsx")
+
         df = df[df["Data"].notna()].copy()
         df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
         df = df.dropna(subset=["Data"]).sort_values("Data")
@@ -209,6 +207,7 @@ def run_reminder():
             return
 
         riga = df.iloc[0]
+        date = riga["Data"].strftime("%Y-%m-%d")
 
         expected_users = set()
 
@@ -224,14 +223,12 @@ def run_reminder():
 
             for nome in nomi:
                 nome = nome.strip()
-                if not nome:
-                    continue
-
-                expected_users.add(to_username(nome))
+                if nome:
+                    expected_users.add(to_username(nome))
 
         res = supabase.table("responses") \
             .select("*") \
-            .eq("date", riga["Data"].strftime("%Y-%m-%d")) \
+            .eq("date", date) \
             .execute()
 
         confirmed_users = {

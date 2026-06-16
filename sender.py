@@ -87,7 +87,7 @@ def build_message():
         ]]
     }
 
-    return msg, date, keyboard, expected_users
+    return msg, date, keyboard, expected_users, df, riga
 
 
 # =====================

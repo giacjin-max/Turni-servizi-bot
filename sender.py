@@ -99,7 +99,7 @@ def send():
     if not result:
         return
 
-    msg, date, keyboard, expected_users = result
+    msg, date, keyboard, expected_users, df, riga = result
 
     res = requests.post(
         url,

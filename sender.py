@@ -142,27 +142,34 @@ def send():
     # =====================
     footer = "\n📌 Servizio\n\n"
 
-    for col in df.columns:
-        if col == "Data":
-            continue
+	already_added = set()
 
-        value = riga[col]
-        if pd.isna(value):
-            continue
+	for col in df.columns:
+    	if col == "Data":
+        	continue
 
-        nomi = str(value).replace(";", ",").split(",")
+    	value = riga[col]
+    	if pd.isna(value):
+        	continue
 
-        for nome in nomi:
-            nome = nome.strip()
-            if not nome:
-                continue
+    	nomi = str(value).replace(";", ",").split(",")
 
-            username = to_username(nome)
+    	for nome in nomi:
+        	nome = nome.strip()
+        	if not nome:
+            	continue
 
-            if username in confirmed_users:
-                footer += f"{nome} 🟢\n"
-            else:
-                footer += f"{nome}\n"
+        	if nome in already_added:
+            	continue  # ❌ evita duplicati
+
+        	already_added.add(nome)
+
+        	username = to_username(nome)
+
+        	if username in confirmed_users:
+            	footer += f"{nome} 🟢\n"
+        	else:
+            	footer += f"{nome}\n"
 
     msg += footer
 

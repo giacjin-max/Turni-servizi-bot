@@ -125,7 +125,7 @@ def send():
             .execute()
 
         confirmed_users = {
-            r["username"].strip()
+            r["username"].strip().replace("@", "")
             for r in (res_db.data or [])
             if r.get("status") == "ok"
         }

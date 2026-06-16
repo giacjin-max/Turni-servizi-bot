@@ -164,67 +164,20 @@ def send():
 # REMINDER GIOVEDÌ (SEMPLICE + NON RISPOSTI)
 # =====================
 def run_reminder():
-    msg = (
-        "📢 PROMEMORIA SERVIZIO\n\n"
-        "Ricordati di controllare i turni.\n"
-        "Premi OK quando hai letto.\n"
-    )
-    try:
-        df = pd.read_excel("turni.xlsx")
-        df = df[df["Data"].notna()].copy()
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-        df = df.dropna(subset=["Data"]).sort_values("Data")
-        today = pd.Timestamp.now().normalize()
-        future_df = df[df["Data"] >= today]
-        if future_df.empty:
-            print("⛔ Nessun turno futuro trovato")
-            return
-        riga = future_df.iloc[0]
-        date = riga["Data"].strftime("%Y-%m-%d")
-        expected_users = set()
-        for col in df.columns:
-            if col == "Data":
-                continue
-            value = riga[col]
-            if pd.isna(value):
-                continue
-            for nome in str(value).replace(";", ",").split(","):
-                nome = nome.strip()
-                if nome:
-                    expected_users.add(to_username(nome))
-        res = supabase.table("responses") \
-            .select("*") \
-            .eq("date", date) \
-            .execute()
-        confirmed_users = {
-            r["username"].strip()
-            for r in (res.data or [])
-            if r.get("status") == "ok"
-        }
-        non_risposti = expected_users - confirmed_users
-        if non_risposti:
-            msg += "\n⛔ Non hanno ancora confermato:\n\n"
-            for nome in sorted(non_risposti):
-                msg += f"{to_username(nome)}\n"
-        else:
-            msg += "\n✅ Tutti hanno già confermato"
-    except Exception as e:
-        print("Errore reminder:", e)
-        msg += "\n⚠ Errore nel caricamento dati"
-    keyboard = {
-        "inline_keyboard": [[
-            {"text": "✅ OK", "callback_data": f"ok|{date}"}
-        ]]
-    }
-    requests.post(
-        url,
-        json={
-            "chat_id": CHAT_ID,
-            "text": msg,
-            "reply_markup": keyboard
-        }
-    )
-    print("📢 Reminder giovedì inviato")
+	msg = (
+    		"📢 PROMEMORIA SERVIZIO\n\n"
+		"Ricordati di controllare i turni.\n"
+    		"Premi OK quando hai letto.\n"
+	)
+
+	if non_risposti:
+    		msg += "\n⛔ Non hanno ancora confermato:\n\n"
+		
+    		for username in sorted(non_risposti):
+        		msg += f"{username}\n"
+
+	else:
+    		msg += "\n✅ Tutti hanno già confermato"
 
 # =====================
 # REMINDER SABATO (SEMPLICE)

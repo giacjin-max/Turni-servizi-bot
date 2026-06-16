@@ -160,15 +160,16 @@ def send():
 # REMINDER GIOVEDÌ (SEMPLICE + NON RISPOSTI)
 # =====================
 def run_reminder():
+	non_risposti = expected_users - confirmed_users
+
 	msg = (
     		"📢 PROMEMORIA SERVIZIO\n\n"
-		"Ricordati di controllare i turni.\n"
-    		"Premi OK quando hai letto.\n"
+    		"Ricordati di controllare i turni.\n"
 	)
 
 	if non_risposti:
     		msg += "\n⛔ Non hanno ancora confermato:\n\n"
-		
+
     		for username in sorted(non_risposti):
         		msg += f"{username}\n"
 

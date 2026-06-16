@@ -224,7 +224,7 @@ def run_reminder():
             for nome in nomi:
                 nome = nome.strip()
                 if nome:
-                    expected_users.add(to_username(nome))
+                    expected_users.add(to_username(nome).replace("@", "").strip())
 
         res = supabase.table("responses") \
             .select("*") \

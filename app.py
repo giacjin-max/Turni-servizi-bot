@@ -36,7 +36,7 @@ scheduler.add_job(
 scheduler.add_job(
     sender.reminder_sabato,
     "cron",
-    day_of_week="sat",
+    day_of_week="mon",
     hour=10,
     minute=0,
     timezone="Europe/Rome"

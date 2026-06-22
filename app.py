@@ -135,8 +135,6 @@ def webhook():
                 json={"chat_id": chat_id, "text": msg}
             )
             return "ok", 200
-
-        return "ok", 200
         
         if text == "/testreminder":
             try:
@@ -152,6 +150,8 @@ def webhook():
                     "text": msg
                 }
             )
+            return "ok", 200
+            
         return "ok", 200
 
     # =====================

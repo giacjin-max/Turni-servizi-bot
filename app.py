@@ -137,6 +137,22 @@ def webhook():
             return "ok", 200
 
         return "ok", 200
+        
+        if text == "/testreminder":
+            try:
+                sender.run_reminder()
+                msg = "✅ Reminder eseguito"
+            except Exception as e:
+                msg = f"❌ Errore:\n{str(e)}"
+
+            requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": msg
+                }
+            )
+        return "ok", 200
 
     # =====================
     # CALLBACK

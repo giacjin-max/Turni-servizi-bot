@@ -256,12 +256,12 @@ def run_reminder():
 
             for u in sorted(non_risposti):
 
-            if u in rubrica_username_to_name:
-                visual = f"@{u}"
-            else:
-                visual = u
+                if f"@{u}" in rubrica_username_to_name:
+                    visual = f"@{u}"
+                else:
+                    visual = u
 
-            msg += f"{visual}\n"
+                msg += f"{visual}\n"
         else:
             msg += "\n✅ Tutti hanno già confermato"
 

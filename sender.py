@@ -255,7 +255,13 @@ def run_reminder():
             msg += "\n⛔ Non hanno ancora confermato:\n\n"
 
             for u in sorted(non_risposti):
-                msg += f"@{u}\n"
+
+            if u in rubrica_username_to_name:
+                visual = f"@{u}"
+            else:
+                visual = u
+
+            msg += f"{visual}\n"
         else:
             msg += "\n✅ Tutti hanno già confermato"
 

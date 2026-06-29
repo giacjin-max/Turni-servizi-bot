@@ -19,8 +19,8 @@ scheduler.add_job(
     sender.send,
     "cron",
     day_of_week="mon",
-    hour=18,
-    minute=0,
+    hour=10,
+    minute=45,
     timezone="Europe/Rome"
 )
 

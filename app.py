@@ -19,8 +19,8 @@ scheduler.add_job(
     sender.send,
     "cron",
     day_of_week="mon",
-    hour=10,
-    minute=45,
+    hour=11,
+    minute=0,
     timezone="Europe/Rome"
 )
 
@@ -28,8 +28,8 @@ scheduler.add_job(
     sender.run_reminder,
     "cron",
     day_of_week="thu",
-    hour=10,
-    minute=45,
+    hour=11,
+    minute=0,
     timezone="Europe/Rome"
 )
 
@@ -37,8 +37,8 @@ scheduler.add_job(
     sender.reminder_sabato,
     "cron",
     day_of_week="sat",
-    hour=10,
-    minute=45,
+    hour=11,
+    minute=0,
     timezone="Europe/Rome"
 )
 

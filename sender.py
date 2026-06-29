@@ -3,6 +3,7 @@ import json
 import pandas as pd
 import requests
 from supabase import create_client
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # =====================
 # CONFIG

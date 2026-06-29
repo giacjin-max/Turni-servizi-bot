@@ -43,11 +43,15 @@ scheduler.add_job(
 )
 
 scheduler.start()
+
+from datetime import datetime
+
 print("=== JOB REGISTRATI ===")
 
 for job in scheduler.get_jobs():
     print(job)
 
+print("Ora corrente:", datetime.now())
 print("🚀 Scheduler attivo")
 
 # =====================
